@@ -1295,7 +1295,7 @@
       return;
     }
     if (hitButton(p, GOMOKU_BTN, 44)) { gomokuOpen = true; gomokuScreen = 'menu'; return; }
-    if (hitButton(p, BRAWLER_BTN, 44)) { brawlerOpen = true; resetBrawler(); return; }
+    if (hitButton(p, BRAWLER_BTN, 44)) { location.href = 'action.html'; return; }   // 平A入口 → 横版12关闯关（action.html，银魂立绘版）
 
     var i = hitCell(p);
     if (i >= 0 && state.cells[i] > 0) {
