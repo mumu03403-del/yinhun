@@ -38,22 +38,31 @@
 
   // ---------- 1. 配置（与 GameConfig.ts 一一对应） ----------
   var GRID_COLS = 5;
-  var GRID_ROWS = 4;
-  // 银魂换皮：最高档位扩到 12；其余数值全部以 MAX_TIER / 公式派生，绝不写死。
-  var MAX_TIER = 12;
-  // 档位底色：原 8 档沿用，新增 4 档（tier9-12）均通过 WCAG AA ≥4.5:1（contrastText 自动选字色）
+  var MAX_ROWS = 8;                 // 棋盘行数上限（可解锁行机制）
+  var GRID_ROWS = 4;                // 当前已解锁行数（被存档 unlockedRows 覆盖）
+  // 解锁下一行的价格：key = 当前行数 + 1（即要解锁到的行）
+  var ROW_UNLOCK_PRICES = { 5: 1000, 6: 4000, 7: 16000, 8: 64000 };
+  // 银魂换皮：最高档位扩到 24；其余数值全部以 MAX_TIER / 公式派生，绝不写死。
+  var MAX_TIER = 24;
+  // 档位底色：24 档；contrastText 自动选字色（满足 WCAG AA）
   var TIER_COLORS = [
     '#7f8c8d', '#3498db', '#2ecc71', '#f1c40f', '#e67e22', '#e74c3c', '#8e44ad', '#16a085',
-    '#154360', '#aed6f1', '#1b2631', '#d4ac0d'
+    '#154360', '#aed6f1', '#1b2631', '#d4ac0d', '#e84393', '#00cec9', '#6c5ce7', '#fd79a8',
+    '#fab1a0', '#00b894', '#0984e3', '#b2bec3', '#636e72', '#e17055', '#a29bfe', '#ffeaa7'
   ];
-  // COIN_RATE[t-1] = 3^(t-1)：tier1=1 … tier12=177147（每档 ×3，结算值由公式派生）
-  var COIN_RATE = [1, 3, 9, 27, 81, 243, 729, 2187, 6561, 19683, 59049, 177147];
+  // COIN_RATE[t-1] = 3^(t-1)：tier1=1 … tier24=94143178827（每档 ×3，结算值由公式派生）
+  var COIN_RATE = [1, 3, 9, 27, 81, 243, 729, 2187, 6561, 19683, 59049, 177147, 531441, 1594323, 4782969, 14348907, 43046721, 129140163, 387420489, 1162261467, 3486784401, 10460353203, 31381059609, 94143178827];
   // 银魂角色名（index 0 = tier1）
   var CHARACTER_NAMES = [
     '坂田银时', '志村新八', '神乐', '定春', '近藤勋', '土方十四郎',
-    '冲田总悟', '桂小太郎', '伊丽莎白', '高杉晋助', '神威', '虚（吉田松阳）'
+    '冲田总悟', '桂小太郎', '伊丽莎白', '高杉晋助', '神威', '虚（吉田松阳）',
+    '山崎退', '柳生九兵衛', '月詠', 'お登勢', 'キャサリン', '長谷川泰三',
+    '武蔵', '岡田似蔵', '来島また子', '徳川茂茂', '幾松', '坂本辰馬'
   ];
-  // 每档对应的美术资源文件名（index 0 = tier1）。注意 tier12 音频无下划线：voice_虚吉田松阳.mp3
+  // 每档对应的美术资源文件名（index 0 = tier1）。
+  // tier1-12 沿用既有资源（board/codex/audio 三件套）；tier13-24 立绘缺口：
+  //   board:null（主棋盘回落代码绘制色块）、codex:'NN_名字.png'（已置 build/assets/codex）、audio:null（回落原声/默认静默）
+  // 注意 tier12 音频无下划线：voice_虚吉田松阳.mp3
   var TIER_META = [
     { board: 'tier1.png',  codex: '01_坂田银时.png',   audio: 'voice_坂田银时.mp3' },
     { board: 'tier2.png',  codex: '02_志村新八.png',   audio: 'voice_志村新八.mp3' },
@@ -66,7 +75,19 @@
     { board: 'tier9.png',  codex: '09_伊丽莎白.png',   audio: 'voice_伊丽莎白.mp3' },
     { board: 'tier10.png', codex: '10_高杉晋助.png',   audio: 'voice_高杉晋助.mp3' },
     { board: 'tier11.png', codex: '11_神威.png',       audio: 'voice_神威.mp3' },
-    { board: 'tier12.png', codex: '12_虚_吉田松阳.png', audio: 'voice_虚吉田松阳.mp3' }
+    { board: 'tier12.png', codex: '12_虚_吉田松阳.png', audio: 'voice_虚吉田松阳.mp3' },
+    { board: null, codex: '13_山崎退.png',   audio: null },
+    { board: null, codex: '14_柳生九兵衛.png', audio: null },
+    { board: null, codex: '15_月詠.png',      audio: null },
+    { board: null, codex: '16_お登勢.png',    audio: null },
+    { board: null, codex: '17_キャサリン.png', audio: null },
+    { board: null, codex: '18_長谷川泰三.png', audio: null },
+    { board: null, codex: '19_武蔵.png',      audio: null },
+    { board: null, codex: '20_岡田似蔵.png',  audio: null },
+    { board: null, codex: '21_来島また子.png', audio: null },
+    { board: null, codex: '22_徳川茂茂.png',  audio: null },
+    { board: null, codex: '23_幾松.png',      audio: null },
+    { board: null, codex: '24_坂本辰馬.png',  audio: null }
   ];
   var INITIAL_UNITS = 6;
 
@@ -81,8 +102,11 @@
   //   tier11: 累计结算 ≥ 20
   //   tier12: 累计结算 ≥ 40 且 图鉴 10/10（highestTier ≥ 10）
   //   tier9/tier10 无门槛，渐进式解锁。
-  var GATE = { 7: { settle: 3 }, 8: { settle: 10, codex: 6 }, 11: { settle: 20 }, 12: { settle: 40, codex: 10 } };
-  var GATE_TIERS = { 7: true, 8: true, 11: true, 12: true };
+  var GATE = {
+    7: { settle: 3 }, 8: { settle: 10, codex: 6 }, 11: { settle: 20 }, 12: { settle: 40, codex: 10 },
+    13: { settle: 5 }, 16: { settle: 8 }, 19: { settle: 12 }, 22: { settle: 18 }, 24: { settle: 25 }
+  };
+  var GATE_TIERS = { 7: true, 8: true, 11: true, 12: true, 13: true, 16: true, 19: true, 22: true, 24: true };
   function tierGateOk(t) {
     var g = GATE[t];
     if (!g) return true;
@@ -106,34 +130,51 @@
 
   var HUD_H = 74;
   var GAP = 8;
+  var CELL_MAX = 66;              // 单格最大尺寸（4 行时更紧凑，不会撑爆）
+  var REGION_TOP = 116;          // 棋盘区域上边界（HUD 下方留白）
+  var REGION_BOTTOM = 512;       // 棋盘区域下边界（决定 CELL 自适应缩放）
+  var REGION_H = REGION_BOTTOM - REGION_TOP;   // 396
+
+  // 以下几何量由 recomputeLayout() 依据当前已解锁行数（GRID_ROWS）计算
   var CELL = 62;
-  var GRID_W = GRID_COLS * CELL + (GRID_COLS - 1) * GAP;   // 342
-  var GRID_H = GRID_ROWS * CELL + (GRID_ROWS - 1) * GAP;   // 272
-  var GRID_X = (W - GRID_W) / 2;                            // 16.5
-  var GRID_Y = 132;                                         // 网格顶部 y
+  var GRID_W = 0, GRID_H = 0, GRID_X = 0, GRID_Y = REGION_TOP;
 
   function cellCenterX(c) { return GRID_X + c * (CELL + GAP) + CELL / 2; }
   function cellCenterY(r) { return GRID_Y + r * (CELL + GAP) + CELL / 2; }
+  // 当前可交互的格子数（仅已解锁行参与放置/合并/结算）
+  function activeCells() { return GRID_COLS * GRID_ROWS; }
 
-  var SPAWN_BTN = { x: W / 2 - 82, y: GRID_Y + GRID_H + 18, w: 164, h: 56 };
+  // CELL 自适应：行数越多格子越小，棋盘恒落在 [REGION_TOP, REGION_BOTTOM] 内，
+  // 其下控件带（招募/解锁/图例/五子棋/平A/重置）位置固定，保证 375×812 全程无重叠。
+  function recomputeLayout() {
+    var rows = Math.max(1, Math.min(MAX_ROWS, GRID_ROWS));
+    CELL = Math.min(CELL_MAX, Math.floor((REGION_H - (rows - 1) * GAP) / rows));
+    GRID_W = GRID_COLS * CELL + (GRID_COLS - 1) * GAP;
+    GRID_H = rows * CELL + (rows - 1) * GAP;
+    GRID_X = (W - GRID_W) / 2;
+    GRID_Y = REGION_TOP + (REGION_H - GRID_H) / 2;
+  }
+  recomputeLayout();
+
+  // 底部控件带：固定位置（不随棋盘缩放）
+  var SPAWN_BTN = { x: 16, y: REGION_BOTTOM + 16, w: 164, h: 52 };
+  var UNLOCK_BTN = { x: 196, y: REGION_BOTTOM + 16, w: 163, h: 52 };
   var COLL_BTN = { x: W - 16 - 74, y: 14, w: 74, h: 46 };
   // 静音切换按钮（HUD 下方左侧空白区，不与网格/产出重叠）
-  var MUTE_BTN = { x: 16, y: 78, w: 48, h: 34 };
+  var MUTE_BTN = { x: 16, y: 80, w: 48, h: 34 };
   // 图鉴弹出层的关闭按钮（drawCollection 内绘制）
   var CODEX_CLOSE_BTN = { x: W / 2 - 80, y: H - 96, w: 160, h: 48 };
 
-  var LEGEND_TOP = SPAWN_BTN.y + SPAWN_BTN.h + 22;   // = 500
-  var RESET_BTN = { x: W / 2 - 62, y: H - 72, w: 124, h: 48 };
-  // 第3点：首页图例改为点击展开（LEGEND_BTN 落原 LEGEND_TOP 空出的区域）
-  var LEGEND_BTN = { x: W / 2 - 60, y: SPAWN_BTN.y + SPAWN_BTN.h + 36, w: 120, h: 34 };
+  var TIP_Y = REGION_BOTTOM + 7;                 // 网格下沿与按钮带之间的单行教学
+  var STATS_Y = 586;                             // 首页统计行
+  var RESET_BTN = { x: W / 2 - 62, y: 754, w: 124, h: 44 };
+  var LEGEND_BTN = { x: W / 2 - 60, y: 602, w: 120, h: 34 };
   var LEGEND_CLOSE_BTN = { x: W / 2 - 80, y: H - 96, w: 160, h: 48 };
-  // 第1点：图鉴放大详情按钮
   var DETAIL_VOICE_BTN = { x: W / 2 - 70, y: H - 132, w: 140, h: 46 };
   var DETAIL_CLOSE_BTN = { x: W / 2 - 80, y: H - 72, w: 160, h: 46 };
-  // 图鉴产出表（12 档改为 2 列布局，整体落在 LEGEND_TOP 与重置按钮之间）
   var LEGEND_ROW = 22;
 
-  // ---------- 五子棋小游戏（角色扮演：你=银 / 敌=鬼）----------
+  // ---------- 五子棋小游戏（角色扮演：你=银 / 敌=鬼；v2 增加人机/双人、角色与背景选择、战绩）----------
   // 模块级状态：每次打开重置，不写进 localStorage 存档（state 字段保持不动）
   var GOMOKU_N = 13;                         // 13×13 交叉点
   var GS = 23;                               // 交叉点间距（格 ≈23px）
@@ -145,11 +186,50 @@
   var GOMOKU_ORIGIN_X = GOMOKU_FRAME_X + GOMOKU_PAD;  // 首个交叉点 x ≈ 49.5
   var GOMOKU_ORIGIN_Y = GOMOKU_FRAME_Y + GOMOKU_PAD;  // 首个交叉点 y ≈ 136
 
-  // 首页入口按钮（避开 COLL/SPAWN/LEGEND/RESET/MUTE）
-  var GOMOKU_BTN = { x: W / 2 - 82, y: 584, w: 164, h: 48 };
-  // 弹层内按钮
+  // 五子棋流程：'menu'（选模式/角色/背景） → 'play'（对局）
+  var gomokuScreen = 'menu';
+  var gomokuMode = 'pve';                    // 'pve' 人机对战 / 'pvp' 双人面对面
+  var gomokuPName = CHARACTER_NAMES[0];      // 玩家 1（你）外观名（cosmetic）
+  var gomokuPName2 = '鬼';                   // 玩家 2（双人）/ AI（人机）外观名
+  var gomokuBG = 0;                          // 棋盘背景主题索引
+  var GOMOKU_BGS = [
+    { name: '传统木纹', frame: 'rgba(122,82,42,0.96)', line: 'rgba(255,238,205,0.55)', star: 'rgba(255,238,205,0.85)', bg: 'rgba(58,38,20,1)' },
+    { name: '夜樱',     frame: 'rgba(44,30,64,0.96)',  line: 'rgba(255,200,230,0.5)',  star: 'rgba(255,200,230,0.85)', bg: 'rgba(20,14,34,1)' },
+    { name: '金砂',     frame: 'rgba(64,52,22,0.96)',  line: 'rgba(247,215,116,0.55)', star: 'rgba(247,215,116,0.85)', bg: 'rgba(28,22,10,1)' }
+  ];
+  // 战绩持久化（人机 / 双人 分开记录）
+  var GOMOKU_REC_KEY = 'gomoku_records_v1';
+  var gomokuRecords = { pve: { win: 0, loss: 0, draw: 0 }, pvp: { win: 0, loss: 0, draw: 0 } };
+  function loadGomokuRecords() {
+    try {
+      var r = JSON.parse(localStorage.getItem(GOMOKU_REC_KEY));
+      if (r && r.pve && r.pvp &&
+          typeof r.pve.win === 'number' && typeof r.pvp.win === 'number') gomokuRecords = r;
+    } catch (e) {}
+  }
+  function saveGomokuRecords() {
+    try { localStorage.setItem(GOMOKU_REC_KEY, JSON.stringify(gomokuRecords)); } catch (e) {}
+  }
+
+  // 首页入口按钮（避开 COLL/SPAWN/UNLOCK/LEGEND/RESET/MUTE）
+  var GOMOKU_BTN = { x: W / 2 - 82, y: 646, w: 164, h: 46 };
+  // 弹层内按钮（对局页）
   var GOMOKU_BACK_BTN = { x: 27.5, y: 500, w: 150, h: 50 };
   var GOMOKU_RESTART_BTN = { x: 197.5, y: 500, w: 150, h: 50 };
+  // 弹层内按钮（菜单页）
+  var GOMOKU_MENU_MODE_PVE = { x: 24, y: 116, w: 160, h: 48 };
+  var GOMOKU_MENU_MODE_PVP = { x: 191, y: 116, w: 160, h: 48 };
+  var GOMOKU_MENU_CHAR_PREV = { x: 54, y: 196, w: 44, h: 44 };
+  var GOMOKU_MENU_CHAR_NEXT = { x: 277, y: 196, w: 44, h: 44 };
+  var GOMOKU_MENU_CHAR2_PREV = { x: 54, y: 268, w: 44, h: 44 };
+  var GOMOKU_MENU_CHAR2_NEXT = { x: 277, y: 268, w: 44, h: 44 };
+  var GOMOKU_MENU_BG = [
+    { x: 18, y: 350, w: 105, h: 46 },
+    { x: 135, y: 350, w: 105, h: 46 },
+    { x: 252, y: 350, w: 105, h: 46 }
+  ];
+  var GOMOKU_MENU_START = { x: 24, y: 612, w: 160, h: 54 };
+  var GOMOKU_MENU_BACK = { x: 191, y: 612, w: 160, h: 54 };
 
   var gomokuOpen = false;
   var gomokuBoard = [];        // 13×13，0=空,1=玩家(银),2=AI(鬼)
@@ -172,7 +252,7 @@
 
   // ---------- 5d. 横板平A小游戏（side-scroll beat-em-up）----------
   // 模块级状态：每次打开重置，不写进 localStorage 存档（state 字段保持不动）
-  var BRAWLER_BTN = { x: W / 2 - 82, y: 644, w: 164, h: 48 };
+  var BRAWLER_BTN = { x: W / 2 - 82, y: 700, w: 164, h: 46 };
   var BRAWLER_BACK_BTN = { x: 27.5, y: 744, w: 150, h: 50 };
   var BRAWLER_RESTART_BTN = { x: 197.5, y: 744, w: 150, h: 50 };
   var BRAWLER_GY = 664;            // 地面线 y
@@ -367,7 +447,7 @@
 
   // ---------- 3. 状态 ----------
   var state = {
-    cells: new Array(GRID_COLS * GRID_ROWS).fill(0),
+    cells: new Array(GRID_COLS * MAX_ROWS).fill(0),   // 固定最大尺寸（行解锁只需提升 GRID_ROWS，旧存档可无损迁移）
     coins: 0,
     highestTier: 1,
     merges: 0,
@@ -375,9 +455,15 @@
     settles: 0
   };
 
+  // 图鉴碎片系统：fragments[t]（1..MAX_TIER，0=占位）每档 0..10；codexDone[t] 记录是否达成 10/10
+  var fragments = new Array(MAX_TIER + 1).fill(0);
+  var codexDone = new Array(MAX_TIER + 1).fill(false);
+  var celebration = null;          // 图鉴达成庆祝弹层 { tier, t, dur }
+  // 解锁行状态（仅 GRID_ROWS 反映当前已解锁行数；unlockedRows 写入存档）
+
   var selected = -1;              // 点选选中的格子索引
   var anim = [];                  // 每格动画 { t, dur, kind }
-  for (var ai = 0; ai < GRID_COLS * GRID_ROWS; ai++) anim.push({ t: 1, dur: 1, kind: null });
+  for (var ai = 0; ai < GRID_COLS * MAX_ROWS; ai++) anim.push({ t: 1, dur: 1, kind: null });
 
   var drag = null;                // { from, x, y, active }
   var floats = [];                // 飘字
@@ -421,6 +507,9 @@
         merges: state.merges,
         spawns: state.spawns,
         settles: state.settles,
+        unlockedRows: GRID_ROWS,
+        fragments: fragments.slice(),
+        codexDone: codexDone.slice(),
         time: Date.now()
       }));
       return true;
@@ -433,17 +522,36 @@
     if (!raw) return;
     var d = null;
     try { d = JSON.parse(raw); } catch (e) { return; }
-    if (!d || !d.cells || d.cells.length !== state.cells.length) return;
+    if (!d || !Array.isArray(d.cells)) return;
 
-    for (var i = 0; i < d.cells.length; i++) {
+    // 行列数可能随版本变化（旧档 20 格 → 新档 40 格）：按最小长度安全迁移，绝不整体拒绝
+    var n = Math.min(d.cells.length, state.cells.length);
+    for (var i = 0; i < n; i++) {
       var t = Number(d.cells[i]) || 0;
       state.cells[i] = Math.max(0, Math.min(MAX_TIER, Math.floor(t)));
     }
+
+    // 已解锁行数（缺省 4 行）；写入后再重算布局
+    if (typeof d.unlockedRows === 'number') {
+      GRID_ROWS = Math.max(4, Math.min(MAX_ROWS, Math.floor(d.unlockedRows)));
+    }
+    recomputeLayout();
+
     state.coins = Number(d.coins) || 0;
     state.highestTier = Math.max(1, Number(d.highestTier) || 1);
     state.merges = Number(d.merges) || 0;
     state.spawns = Number(d.spawns) || 0;
     state.settles = Number(d.settles) || 0;
+
+    // 图鉴碎片 / 达成（缺失则全 0 / false，兼容旧档）
+    if (Array.isArray(d.fragments)) {
+      for (var fi = 1; fi <= MAX_TIER; fi++) {
+        fragments[fi] = Math.max(0, Math.min(10, Number(d.fragments[fi]) || 0));
+      }
+    }
+    if (Array.isArray(d.codexDone)) {
+      for (var ci2 = 1; ci2 <= MAX_TIER; ci2++) codexDone[ci2] = !!d.codexDone[ci2];
+    }
 
     // 离线收益
     var elapsed = Math.max(0, (Date.now() - (Number(d.time) || Date.now())) / 1000);
@@ -470,7 +578,7 @@
 
   function coinsPerSecond() {
     var sum = 0;
-    for (var i = 0; i < state.cells.length; i++) {
+    for (var i = 0; i < activeCells(); i++) {
       var t = state.cells[i];
       if (t > 0) sum += COIN_RATE[t - 1];
     }
@@ -479,7 +587,7 @@
 
   function spawnTier1() {
     var empties = [];
-    for (var i = 0; i < state.cells.length; i++) if (state.cells[i] === 0) empties.push(i);
+    for (var i = 0; i < activeCells(); i++) if (state.cells[i] === 0) empties.push(i);
     if (empties.length === 0) {
       // 满盘时给出真正可行的解法：先长按结算满级单位腾位
       toast = {
@@ -500,7 +608,7 @@
   // 第4点：放置自动发角色（不依赖手动招募；按权重随机 tier，避免总刷 1 档）
   function autoSpawn() {
     var empties = [];
-    for (var i = 0; i < state.cells.length; i++) if (state.cells[i] === 0) empties.push(i);
+    for (var i = 0; i < activeCells(); i++) if (state.cells[i] === 0) empties.push(i);
     if (empties.length === 0) return;                      // 满盘不自动放置
     var cap = Math.max(1, state.highestTier - 3);          // 不会大幅超前当前进度
     var weights = [], total = 0;
@@ -538,14 +646,41 @@
     anim[from] = { t: 0, dur: 0.2, kind: 'clear' };
     if (state.cells[to] > state.highestTier) state.highestTier = state.cells[to];
 
+    // 图鉴碎片系统：每次产出 tier-t 单位 +1（上限 10）；首次满 10/10 触发首页庆祝
+    var newTier = state.cells[to];
+    fragments[newTier] = Math.min(10, (fragments[newTier] || 0) + 1);
+    if (fragments[newTier] >= 10 && !codexDone[newTier]) {
+      codexDone[newTier] = true;
+      triggerCodexCelebration(newTier);
+    }
+
     var cx = cellCenterX(to % GRID_COLS), cy = cellCenterY(Math.floor(to / GRID_COLS));
-    floats.push({ x: cx, y: cy, t: 0, dur: 1.0, text: '合体 → ' + state.cells[to] + '档' });
+    floats.push({ x: cx, y: cy, t: 0, dur: 1.0, text: '合体 → ' + newTier + '档' });
     bgPulse = 0.35;
-    // 高 impact 合并特效：粒子 + 屏幕震动 + 该档原声
+    // 高 impact 合并特效：粒子 + 屏幕震动 + 该档原声 + 合并音效
     spawnParticles(cx, cy);
     screenShake = Math.min(1, screenShake + 0.6);
-    playVoice(state.cells[to]);
+    playVoice(newTier);
+    playSfx('sfx_merge');
     return true;
+  }
+
+  // 图鉴首次达成 10/10：在首页弹出一个卡片 + 光晕 + 粒子，并播放解锁音效（缺 sfx 时回落原声）
+  function triggerCodexCelebration(tier) {
+    celebration = { tier: tier, t: 0, dur: 3.4 };
+    playSfx('sfx_unlock');
+    playVoice(tier);   // sfx 缺失时的兜底
+    // 撒一圈金色粒子做庆祝
+    var cxp = W / 2, cyp = H * 0.42;
+    for (var k = 0; k < 18; k++) {
+      var ang = (Math.PI * 2 * k) / 18 + Math.random() * 0.3;
+      var spd = 60 + Math.random() * 120;
+      particles.push({
+        x: cxp, y: cyp,
+        vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 30,
+        life: 0, dur: 1.4 + Math.random() * 0.8, color: '#f7d774'
+      });
+    }
   }
 
   /**
@@ -571,6 +706,7 @@
     toast = { text: tier + ' 档变现 +' + fmt(gain) + ' 金币（' + SETTLE_SECONDS + ' 秒产出）', t: 2.2 };
     bgPulse = 0.3;
     playVoice(MAX_TIER);
+    playSfx('sfx_settle');
     return true;
   }
 
@@ -630,17 +766,32 @@
     return true;
   }
 
-  // 落子后判定胜负/平局；玩家胜时发金币奖励
+  // 记录战绩（人机 / 双人 分开；以玩家1视角：胜=who1，负=who2，平=0）
+  function gomokuRecordResult(who) {
+    var key = (gomokuMode === 'pvp') ? 'pvp' : 'pve';
+    if (who === 0) gomokuRecords[key].draw++;
+    else if (who === 1) gomokuRecords[key].win++;
+    else gomokuRecords[key].loss++;
+    saveGomokuRecords();
+  }
+
+  // 落子后判定胜负/平局；记录战绩，玩家（PvE）胜时发金币奖励
   function gomokuAfterMove(who) {
     if (gomokuWin(gomokuBoard, who)) {
       gomokuOver = true;
-      gomokuResult = (who === 1) ? '玩家胜' : '敌方胜';
-      if (who === 1) rewardGomokuWin();
+      if (gomokuMode === 'pvp') {
+        gomokuResult = (who === 1) ? '玩家1胜' : '玩家2胜';
+      } else {
+        gomokuResult = (who === 1) ? '玩家胜' : '敌方胜';
+      }
+      gomokuRecordResult(who);
+      if (who === 1 && gomokuMode === 'pve') rewardGomokuWin();   // 仅人机模式玩家胜给金币
       return;
     }
     if (gomokuBoardFull()) {
       gomokuOver = true;
       gomokuResult = '平局';
+      gomokuRecordResult(0);
     }
   }
 
@@ -651,6 +802,35 @@
       toast = { text: '五子棋获胜！金币 +1000', t: 2.4 };
       save();
     }
+  }
+
+  // 菜单页输入：模式 / 角色 / 背景 / 开始 / 返回
+  function handleGomokuMenuInput(p) {
+    if (hitButton(p, GOMOKU_MENU_BACK, 44)) { gomokuOpen = false; return; }
+    if (hitButton(p, GOMOKU_MENU_MODE_PVE, 44)) { gomokuMode = 'pve'; gomokuPName2 = '鬼'; return; }
+    if (hitButton(p, GOMOKU_MENU_MODE_PVP, 44)) { gomokuMode = 'pvp'; return; }
+    if (hitButton(p, GOMOKU_MENU_CHAR_PREV, 44)) { cycleGomokuChar(1, -1); return; }
+    if (hitButton(p, GOMOKU_MENU_CHAR_NEXT, 44)) { cycleGomokuChar(1, 1); return; }
+    if (gomokuMode === 'pvp') {
+      if (hitButton(p, GOMOKU_MENU_CHAR2_PREV, 44)) { cycleGomokuChar(2, -1); return; }
+      if (hitButton(p, GOMOKU_MENU_CHAR2_NEXT, 44)) { cycleGomokuChar(2, 1); return; }
+    }
+    for (var bi = 0; bi < GOMOKU_MENU_BG.length; bi++) {
+      if (hitButton(p, GOMOKU_MENU_BG[bi], 44)) { gomokuBG = bi; return; }
+    }
+    if (hitButton(p, GOMOKU_MENU_START, 44)) {
+      gomokuScreen = 'play';
+      resetGomoku();
+      return;
+    }
+  }
+  function cycleGomokuChar(side, dir) {
+    var names = CHARACTER_NAMES;
+    var cur = (side === 1) ? gomokuPName : gomokuPName2;
+    var idx = names.indexOf(cur);
+    if (idx < 0) idx = 0;
+    idx = (idx + dir + names.length) % names.length;
+    if (side === 1) gomokuPName = names[idx]; else gomokuPName2 = names[idx];
   }
 
   // 简单启发式 AI：优先成5 > 堵玩家成5 > 在已有棋子附近按连段分落子
@@ -707,17 +887,22 @@
     if (!gomokuOver) gomokuTurn = 1;
   }
 
+  function firstChar(s) { return s ? String(s).charAt(0) : ''; }
+
   function drawGomoku() {
-    ctx.fillStyle = 'rgba(6,6,12,1)';   // 完全不透明遮罩
+    var bg = GOMOKU_BGS[gomokuBG] || GOMOKU_BGS[0];
+    ctx.fillStyle = bg.bg;                     // 背景主题铺底
     ctx.fillRect(0, 0, W, H);
-    text('五子棋 · 你(银) vs 敌(鬼)', W / 2, 56, 22, '#ffffff', 'center', '800');
+    var title = (gomokuMode === 'pvp')
+      ? ('五子棋 · ' + gomokuPName + ' vs ' + gomokuPName2)
+      : ('五子棋 · ' + gomokuPName + ' vs ' + gomokuPName2);
+    text(title, W / 2, 56, 20, '#ffffff', 'center', '800');
 
-    // 棋盘外框
-    fillRR(GOMOKU_FRAME_X, GOMOKU_FRAME_Y, GOMOKU_FRAME_W, GOMOKU_FRAME_W, 14, 'rgba(255,255,255,0.05)');
-    fillRR(GOMOKU_FRAME_X, GOMOKU_FRAME_Y, GOMOKU_FRAME_W, GOMOKU_FRAME_W, 14, 'rgba(28,28,42,0.92)');
+    // 棋盘外框（背景主题着色）
+    fillRR(GOMOKU_FRAME_X, GOMOKU_FRAME_Y, GOMOKU_FRAME_W, GOMOKU_FRAME_W, 14, bg.frame);
 
-    // 网格线
-    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    // 网格线（主题色）
+    ctx.strokeStyle = bg.line;
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (var i = 0; i < GOMOKU_N; i++) {
@@ -730,7 +915,7 @@
 
     // 星位（13 路：3/6/9）
     var stars = [3, 6, 9];
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillStyle = bg.star;
     for (var a = 0; a < stars.length; a++)
       for (var b = 0; b < stars.length; b++) {
         ctx.beginPath();
@@ -738,33 +923,72 @@
         ctx.fill();
       }
 
-    // 棋子（圆）
+    // 棋子（圆，标签取角色名首字）
     for (var r = 0; r < GOMOKU_N; r++)
       for (var c = 0; c < GOMOKU_N; c++) {
         var v = gomokuBoard[r][c];
         if (v === 0) continue;
         var px = GOMOKU_ORIGIN_X + c * GS, py = GOMOKU_ORIGIN_Y + r * GS;
-        var col = (v === 1) ? '#f1c40f' : '#34495e';
+        var col = (v === 1) ? '#f1c40f' : '#2c3e50';
         var rad = GS * 0.42;
         ctx.save();
         ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2;
         ctx.beginPath(); ctx.arc(px, py, rad, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill();
         ctx.restore();
-        text(v === 1 ? '银' : '鬼', px, py, 15, v === 1 ? '#141414' : '#ffffff', 'center', '800');
+        var label = (v === 1) ? firstChar(gomokuPName) : firstChar(gomokuPName2);
+        text(label, px, py, 15, v === 1 ? '#141414' : '#ffffff', 'center', '800');
       }
 
     // 回合 / 胜负提示
+    var curName = (gomokuTurn === 1) ? gomokuPName : gomokuPName2;
     var prompt = gomokuOver
       ? ('结果：' + gomokuResult)
-      : (gomokuTurn === 1 ? '轮到你落子（银）' : '敌方思考中…（鬼）');
+      : (gomokuMode === 'pve' && gomokuTurn === 2 ? '敌方思考中…（' + gomokuPName2 + '）' : '轮到 ' + curName + ' 落子');
     text(prompt, W / 2, GOMOKU_FRAME_Y + GOMOKU_FRAME_W + 26, 15,
-         gomokuOver ? (gomokuResult === '玩家胜' ? '#5fe08f' : '#e74c3c') : '#f0e2a8', 'center', '700');
+         gomokuOver ? (gomokuResult.indexOf('胜') >= 0 ? '#5fe08f' : '#e74c3c') : '#f0e2a8', 'center', '700');
     if (gomokuResult === '玩家胜') {
       text('奖励 +1000 金币', W / 2, GOMOKU_FRAME_Y + GOMOKU_FRAME_W + 50, 13, '#ffe58a', 'center', '700');
     }
 
     drawButton(GOMOKU_BACK_BTN, '返回', '#3498db');
     drawButton(GOMOKU_RESTART_BTN, '重新开始', '#e67e22');
+  }
+
+  // 五子棋菜单页：模式 / 角色 / 背景 / 战绩 / 开始
+  function drawGomokuMenu() {
+    ctx.fillStyle = 'rgba(6,6,12,1)';
+    ctx.fillRect(0, 0, W, H);
+    text('五子棋', W / 2, 56, 26, '#ffffff', 'center', '800');
+    text('选择模式 · 角色 · 棋盘', W / 2, 86, 12, '#9a9ab0', 'center', '500');
+
+    text('对战模式', 24, 104, 13, '#9a9ab0', 'left', '600');
+    drawButton(GOMOKU_MENU_MODE_PVE, '人机对战', gomokuMode === 'pve' ? '#f7d774' : '#3498db');
+    drawButton(GOMOKU_MENU_MODE_PVP, '双人面对面', gomokuMode === 'pvp' ? '#f7d774' : '#3498db');
+
+    text('你的角色（外观）', 24, 184, 13, '#9a9ab0', 'left', '600');
+    drawButton(GOMOKU_MENU_CHAR_PREV, '◀', '#34495e');
+    drawButton(GOMOKU_MENU_CHAR_NEXT, '▶', '#34495e');
+    text(gomokuPName, W / 2, 218, 18, '#f7d774', 'center', '800');
+
+    if (gomokuMode === 'pvp') {
+      text('对手角色（外观）', 24, 256, 13, '#9a9ab0', 'left', '600');
+      drawButton(GOMOKU_MENU_CHAR2_PREV, '◀', '#34495e');
+      drawButton(GOMOKU_MENU_CHAR2_NEXT, '▶', '#34495e');
+      text(gomokuPName2, W / 2, 290, 18, '#f7d774', 'center', '800');
+    }
+
+    text('棋盘背景', 24, 338, 13, '#9a9ab0', 'left', '600');
+    for (var bi = 0; bi < GOMOKU_MENU_BG.length; bi++) {
+      drawButton(GOMOKU_MENU_BG[bi], GOMOKU_BGS[bi].name, gomokuBG === bi ? '#f7d774' : '#34495e');
+    }
+
+    var rec = gomokuRecords;
+    text('战绩  人机 ' + rec.pve.win + '胜' + rec.pve.loss + '负' + rec.pve.draw + '平   ·   双人 ' +
+         rec.pvp.win + '胜' + rec.pvp.loss + '负' + rec.pvp.draw + '平',
+         W / 2, 424, 12, '#9fe0ff', 'center', '600');
+
+    drawButton(GOMOKU_MENU_START, '开始对战', '#2ecc71');
+    drawButton(GOMOKU_MENU_BACK, '返回', '#3498db');
   }
 
   // ---------- 5a. 合并特效 & 原声 ----------
@@ -796,6 +1020,24 @@
         a.play();
       }
     } catch (e) { /* 音频播放失败不影响游戏 */ }
+  }
+
+  // SFX：合并/结算/解锁音效（sfx_merge / sfx_settle / sfx_unlock）。
+  // 文件缺失或播放失败一律静默，绝不抛异常（另一个 worker 负责生成这些文件）。
+  var sfxCache = {};
+  function playSfx(name) {
+    if (muted) return;
+    try {
+      var a = sfxCache[name];
+      if (!a) {
+        a = new Audio(ASSET_BASE + 'assets/audio/' + name + '.mp3');
+        a.preload = 'auto';
+        sfxCache[name] = a;
+      }
+      a.currentTime = 0;
+      var pr = a.play();
+      if (pr && typeof pr.catch === 'function') pr.catch(function () {});
+    } catch (e) { /* fail silently */ }
   }
 
   // 美术资源预加载（boot 时调用）：立绘/图鉴图 + 原声；失败回落代码绘制，绝不抛异常
@@ -846,6 +1088,11 @@
     if (tier === 8) return '满级变现满 10 次 且 集齐图鉴 6/6，解锁 8 档（登峰造极）';
     if (tier === 11) return '满级变现满 20 次，解锁 11 档';
     if (tier === 12) return '满级变现满 40 次 且 集齐图鉴 10/10，解锁 12 档';
+    if (tier === 13) return '累计变现满 5 次，解锁 13 档';
+    if (tier === 16) return '累计变现满 8 次，解锁 16 档';
+    if (tier === 19) return '累计变现满 12 次，解锁 19 档';
+    if (tier === 22) return '累计变现满 18 次，解锁 22 档';
+    if (tier === 24) return '累计变现满 25 次，解锁 24 档（终焉）';
     return '';
   }
   // 图例紧凑短标签（2 列布局空间有限，用缩写避免溢出；完整条件见图鉴弹层）
@@ -854,6 +1101,11 @@
     if (tier === 8) return '变现10·图6/6';
     if (tier === 11) return '变现20次';
     if (tier === 12) return '变现40·图10/10';
+    if (tier === 13) return '变现5次';
+    if (tier === 16) return '变现8次';
+    if (tier === 19) return '变现12次';
+    if (tier === 22) return '变现18次';
+    if (tier === 24) return '变现25次';
     return '';
   }
 
@@ -983,9 +1235,12 @@
 
     // 五子棋弹层优先（完全覆盖，所有点击先在此消费，return 避免穿透到玩法层）
     if (gomokuOpen) {
-      if (hitButton(p, GOMOKU_BACK_BTN, 44)) { gomokuOpen = false; return; }
+      if (gomokuScreen === 'menu') { handleGomokuMenuInput(p); return; }
+      // 对局页
+      if (hitButton(p, GOMOKU_BACK_BTN, 44)) { gomokuOpen = false; gomokuScreen = 'menu'; return; }
       if (hitButton(p, GOMOKU_RESTART_BTN, 44)) { resetGomoku(); return; }
-      if (gomokuOver || gomokuTurn !== 1) return;   // 非玩家回合 / 已结束 → 棋盘点击无效
+      if (gomokuOver) return;
+      if (gomokuMode === 'pve' && gomokuTurn !== 1) return;   // 人机：等待 AI 思考
       var c = Math.round((p.x - GOMOKU_ORIGIN_X) / GS);
       var r = Math.round((p.y - GOMOKU_ORIGIN_Y) / GS);
       if (r < 0 || r >= GOMOKU_N || c < 0 || c >= GOMOKU_N) return;
@@ -993,11 +1248,15 @@
       if (Math.abs(p.x - (GOMOKU_ORIGIN_X + c * GS)) > GS / 2 ||
           Math.abs(p.y - (GOMOKU_ORIGIN_Y + r * GS)) > GS / 2) return;
       if (gomokuBoard[r][c] !== 0) return;          // 该点已有子
-      gomokuBoard[r][c] = 1;
-      gomokuAfterMove(1);
+      gomokuBoard[r][c] = gomokuTurn;
+      gomokuAfterMove(gomokuTurn);
       if (!gomokuOver) {
-        gomokuTurn = 2;
-        setTimeout(aiGomokuMove, 350);              // 下一帧让 AI 走一步
+        if (gomokuMode === 'pve') {
+          gomokuTurn = 2;
+          setTimeout(aiGomokuMove, 350);            // 下一帧让 AI 走一步
+        } else {
+          gomokuTurn = (gomokuTurn === 1) ? 2 : 1; // 双人：双方轮流出手
+        }
       }
       return;
     }
@@ -1028,13 +1287,14 @@
     }
 
     if (hitButton(p, SPAWN_BTN, 44)) { spawnTier1(); return; }
+    if (hitButton(p, UNLOCK_BTN, 44)) { tryUnlockRow(); return; }
     if (hitButton(p, COLL_BTN, 44)) { collectionOpen = true; return; }
     if (hitButton(p, MUTE_BTN, 44)) { muted = !muted; return; }
     if (hitButton(p, RESET_BTN, 44)) {
       if (window.confirm('确定要清空存档、重新开始吗？')) resetAll();
       return;
     }
-    if (hitButton(p, GOMOKU_BTN, 44)) { gomokuOpen = true; resetGomoku(); return; }
+    if (hitButton(p, GOMOKU_BTN, 44)) { gomokuOpen = true; gomokuScreen = 'menu'; return; }
     if (hitButton(p, BRAWLER_BTN, 44)) { brawlerOpen = true; resetBrawler(); return; }
 
     var i = hitCell(p);
@@ -1202,9 +1462,11 @@
 
   function fmt(n) {
     n = Math.floor(n);
-    if (n < 10000) return String(n);
-    if (n < 100000000) return (n / 10000).toFixed(n < 100000 ? 2 : 1) + '万';
-    return (n / 100000000).toFixed(2) + '亿';
+    if (n < 1000) return String(n);
+    var units = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi'];
+    var u = 0;
+    while (n >= 1000 && u < units.length - 1) { n /= 1000; u++; }
+    return n.toFixed(n < 10 ? 2 : (n < 100 ? 1 : 0)) + units[u];
   }
 
   function fmtTime(sec) {
@@ -1450,13 +1712,13 @@
   }
 
   function hasMaxTierUnit() {
-    for (var i = 0; i < state.cells.length; i++) if (state.cells[i] === MAX_TIER) return true;
+    for (var i = 0; i < activeCells(); i++) if (state.cells[i] === MAX_TIER) return true;
     return false;
   }
 
   function drawSpawnArea() {
     drawButton(SPAWN_BTN, '招募 +1', '#2ecc71');
-    var hy = SPAWN_BTN.y + SPAWN_BTN.h + 12;
+    var hy = TIP_Y;
     // 提示行就地教学，不额外占版面：长按中 > 有满级单位 > 默认
     if (press.i >= 0) {
       text('长按中… 变现可得 +' + fmt(settleValue(MAX_TIER)) + ' 金币', W / 2, hy, 12, '#ffe58a', 'center', '700');
@@ -1465,6 +1727,77 @@
     } else {
       text('免费放置 1 个 1 档单位', W / 2, hy, 12, '#6d6d83', 'center', '500');
     }
+  }
+
+  // 解锁行按钮：显示下一行价格 / 已解锁满行；金币不足置灰
+  function drawUnlockButton() {
+    var label, sub, color, enabled = true;
+    if (GRID_ROWS >= MAX_ROWS) {
+      label = '已解锁满行'; sub = ''; color = '#5c5c72'; enabled = false;
+    } else {
+      var price = ROW_UNLOCK_PRICES[GRID_ROWS + 1];
+      label = '解锁第' + (GRID_ROWS + 1) + '行';
+      sub = fmt(price) + ' 金币';
+      enabled = state.coins >= price;
+      color = enabled ? '#8e44ad' : '#5c5c72';
+    }
+    drawButton(UNLOCK_BTN, label, color);
+    if (sub) {
+      text(sub, UNLOCK_BTN.x + UNLOCK_BTN.w / 2, UNLOCK_BTN.y + UNLOCK_BTN.h - 11, 11,
+           enabled ? '#e8d6ff' : '#9a9ab0', 'center', '600');
+    }
+  }
+
+  // 花金币解锁下一行：提升 GRID_ROWS 并重算布局，写入存档
+  function tryUnlockRow() {
+    if (GRID_ROWS >= MAX_ROWS) return;
+    var price = ROW_UNLOCK_PRICES[GRID_ROWS + 1];
+    if (price == null) return;
+    if (state.coins < price) {
+      toast = { text: '金币不足，解锁第' + (GRID_ROWS + 1) + '行需 ' + fmt(price) + ' 金币', t: 2.0 };
+      return;
+    }
+    state.coins -= price;
+    GRID_ROWS++;
+    recomputeLayout();
+    save();
+    toast = { text: '已解锁第 ' + GRID_ROWS + ' 行！', t: 2.0 };
+  }
+
+  // 图鉴达成 10/10 的庆祝弹层：角色卡 + 光晕 + 碎片进度（音效在触发时已播放）
+  function drawCelebration() {
+    var t = celebration.t;
+    var tier = celebration.tier;
+    var cx = W / 2, cy = H * 0.42;
+    var glow = 0.5 + 0.5 * Math.sin(t * 6);
+    ctx.save();
+    var rg = ctx.createRadialGradient(cx, cy, 10, cx, cy, 160);
+    rg.addColorStop(0, 'rgba(247,215,116,' + (0.32 * glow) + ')');
+    rg.addColorStop(1, 'rgba(247,215,116,0)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+
+    var cw = 240, ch = 210, bx = cx - cw / 2, by = cy - ch / 2;
+    fillRR(bx, by, cw, ch, 20, 'rgba(20,20,34,0.96)');
+    strokeRR(bx, by, cw, ch, 20, '#f7d774', 3);
+
+    var discR = 50;
+    var sprite = codexImg[tier];
+    if (sprite) {
+      drawCover(sprite, cx - discR, cy - 74, discR * 2, discR * 2);
+    } else {
+      var color = TIER_COLORS[tier - 1];
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 4;
+      var g = ctx.createLinearGradient(cx - discR, by, cx + discR, by + discR * 2);
+      g.addColorStop(0, shade(color, 0.3)); g.addColorStop(0.5, color); g.addColorStop(1, shade(color, -0.2));
+      ctx.beginPath(); ctx.arc(cx, cy - 20, discR, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
+      ctx.restore();
+      text(String(tier), cx, cy - 20, 30, contrastText(color), 'center', '800');
+    }
+    text('图鉴达成！', cx, by + ch - 46, 18, '#f7d774', 'center', '800');
+    text(CHARACTER_NAMES[tier - 1] + ' · 碎片 ' + fragments[tier] + '/10', cx, by + ch - 22, 13, '#ffffff', 'center', '600');
   }
 
   // 第3点：图例 2 列表格（复用于浮层；首页改为点击展开入口）
@@ -1505,7 +1838,7 @@
   }
 
   function drawStats() {
-    var y = LEGEND_TOP + 224;   // 图例框（高 210）下方，不与重置按钮（y=740）重叠
+    var y = STATS_Y;   // 首页统计行（控件带固定位置，不与重置按钮重叠）
     fillRR(16, y - 14, W - 32, 26, 12, 'rgba(255,255,255,0.06)');
     strokeRR(16, y - 14, W - 32, 26, 12, 'rgba(255,255,255,0.08)', 1);
     var line = '已合成 ' + state.merges + ' 次   ·   最高档位 ' + state.highestTier +
@@ -1593,7 +1926,7 @@
     var cardH = 118;
     var gap = 12;
     var startY = 104;
-    collectionMaxScroll = Math.max(0, 6 * (118 + 12) - (H - 168));
+    collectionMaxScroll = Math.max(0, (MAX_TIER / 2) * (118 + 12) - (H - 168));
 
     // 第1点：卡片区裁剪，滚动不溢出
     ctx.save();
@@ -1642,6 +1975,7 @@
       if (unlocked) {
         text('▶ 原声', x + cardW - 12, y + cardH - 16, 11, '#9fe0ff', 'right', '700');
         text('+' + COIN_RATE[i] + '/秒', x + 14, y + cardH - 34, 12, '#8fd8a8', 'left', '600');
+        text('碎片 ' + fragments[tierN] + '/10', x + 14, y + cardH - 52, 11, codexDone[tierN] ? '#f7d774' : '#cfcfe0', 'left', '600');
       } else if (!isGateTier) {
         text('需要 ' + tierN + ' 档', x + 14, y + cardH - 34, 11, '#5c5c72', 'left', '600');
       }
@@ -1729,6 +2063,7 @@
     drawPressRing();
     drawDragGhost();
     drawSpawnArea();
+    drawUnlockButton();                            // 解锁行按钮（始终绘制，被浮层遮罩覆盖时不可见）
     if (!collectionOpen && !legendOpen) {   // 第2/3点：图鉴或图例浮层打开时跳过首页图例/统计/底部
       drawLegend();
       drawStats();
@@ -1739,11 +2074,14 @@
     drawFloats(dt);
     drawToast();
     ctx.restore();
+    if (celebration) drawCelebration();            // 图鉴达成庆祝（稳定层）
     if (collectionOpen) drawCollection();
     if (legendOpen) drawLegendOverlay();
     if (detailOpen) drawDetail();
     if (modal) drawModal();
-    if (gomokuOpen) drawGomoku();                 // 五子棋弹层最后绘制，覆盖所有
+    if (gomokuOpen) {                              // 五子棋弹层最后绘制，覆盖所有
+      if (gomokuScreen === 'menu') drawGomokuMenu(); else drawGomoku();
+    }
     if (brawlerOpen) drawBrawler();               // 横板平A弹层（最后绘制，覆盖所有）
   }
 
@@ -1792,6 +2130,8 @@
     }
     if (screenShake > 0) screenShake = Math.max(0, screenShake - dt * 2.2);
 
+    if (celebration) { celebration.t += dt; if (celebration.t >= celebration.dur) celebration = null; }
+
     saveTimer += dt;
     if (saveTimer >= 2) { saveTimer = 0; save(); }
   }
@@ -1809,6 +2149,7 @@
   function boot() {
     resize();
     load();
+    loadGomokuRecords();   // 五子棋战绩
     loadAssets();   // 异步预加载立绘/图鉴/原声；失败回落代码绘制
     if (state.cells.every(function (v) { return v === 0; }) && state.merges === 0 && state.coins === 0) {
       for (var i = 0; i < INITIAL_UNITS; i++) spawnTier1();
@@ -1871,7 +2212,7 @@
     },
     // 银魂换皮新增钩子（供自动化验证 / 微信小游戏接入）
     coinRateMax: COIN_RATE[MAX_TIER - 1],
-    assetsLoaded: function () { return { board: loadedBoard, codex: loadedCodex, audio: loadedAudio, total: 12 }; },
+    assetsLoaded: function () { return { board: loadedBoard, codex: loadedCodex, audio: loadedAudio, total: 24 }; },
     isMuted: function () { return muted; },
     playVoice: playVoice,
     boardImgLoaded: function (t) { return !!boardImg[t]; },
@@ -1884,7 +2225,7 @@
       result: function () { return gomokuResult; },
       turn: function () { return gomokuTurn; },
       board: function () { return gomokuBoard; },
-      open: function () { gomokuOpen = true; resetGomoku(); return gomokuBoard; },
+      open: function () { gomokuOpen = true; gomokuScreen = 'play'; resetGomoku(); return gomokuBoard; },
       close: function () { gomokuOpen = false; },
       reset: function () { resetGomoku(); },
       place: function (r, c, who) {           // 测试用：直接落子并判胜（who:1=玩家 2=AI）

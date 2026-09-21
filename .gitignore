@@ -8,3 +8,10 @@ desktop.ini
 
 # 依赖目录（如出现）
 node_modules/
+
+# 水印处理前的原图备份与临时依赖缓存（不入库）
+_watermark_originals/
+build/_verify/_tmp_lamejs/
+
+# 核验过程的临时输出（脚本 .cjs/.mjs 保留入库）
+build/_verify/*.txt
