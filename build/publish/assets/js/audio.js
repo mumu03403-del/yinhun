@@ -4,6 +4,18 @@ window.GinAudio = (function(){
   try { enabled = localStorage.getItem(KEY)!=='0'; } catch(e){}
   const cache={};
   let ctx=null;
+  // Assume mp3 assets are served. A probe flips this to false when the host
+  // cannot deliver our .mp3 files (e.g. a static preview snapshot that 404s
+  // audio) so we fall back to procedural WebAudio synthesis instead of silence.
+  let mp3ok = true;
+
+  try {
+    const probe = fetch('assets/audio/sfx_merge.mp3', { method:'GET', headers:{'Range':'bytes=0-0'} });
+    if (probe && probe.then) {
+      probe.then(function(r){ if(!r.ok){ mp3ok=false; } }).catch(function(){ mp3ok=false; });
+    }
+  } catch(e){ mp3ok=false; }
+
   function ac(){
     try{
       const Ctx=window.AudioContext||window.webkitAudioContext;
@@ -14,13 +26,41 @@ window.GinAudio = (function(){
     }catch(e){ return null; }
   }
   function el(name){
-    if(!cache[name]){ const a=new Audio('assets/audio/'+name+'.mp3'); a.preload='auto'; cache[name]=a; }
+    if(!cache[name]){
+      const a=new Audio('assets/audio/'+name+'.mp3');
+      a.preload='auto';
+      a.addEventListener('error', function(){ a.__failed=true; mp3ok=false; });
+      cache[name]=a;
+    }
     return cache[name];
   }
   function setEnabled(v){ enabled=!!v; try{localStorage.setItem(KEY, enabled?'1':'0');}catch(e){} if(!enabled){ for(const k in cache){ try{cache[k].pause();}catch(e){} } } }
   function isEnabled(){ return enabled; }
-  function playSfx(name){ if(!enabled) return; try{ const a=el(name); a.currentTime=0; const p=a.play(); if(p&&p.catch)p.catch(function(){}); }catch(e){} }
-  function playVoice(name){ if(!enabled) return; try{ const a=el('voice_'+name); a.currentTime=0; const p=a.play(); if(p&&p.catch)p.catch(function(){}); }catch(e){} }
+
+  // ---- procedural fallbacks (used when mp3 is unavailable) ----
+  function synthSfx(name){
+    if(name==='sfx_unlock'){ unlock(); return; }
+    if(name==='sfx_merge'){ note(880,0.06,0,'square',0.05); note(1320,0.05,0.05,'square',0.04); return; }
+    if(name==='sfx_settle'){ note(300,0.10,0,'sine',0.05); return; }
+    blip();
+  }
+  function synthVoice(){
+    // a short "talk" blip so characters are never fully silent in preview
+    note(520,0.05,0,'triangle',0.05);
+    note(660,0.05,0.06,'triangle',0.045);
+    note(440,0.05,0.12,'triangle',0.045);
+  }
+
+  function playSfx(name){
+    if(!enabled) return;
+    if(!mp3ok){ synthSfx(name); return; }
+    try{ const a=el(name); a.currentTime=0; const p=a.play(); if(p&&p.catch)p.catch(function(){ a.__failed=true; mp3ok=false; synthSfx(name); }); }catch(e){ mp3ok=false; synthSfx(name); }
+  }
+  function playVoice(name){
+    if(!enabled) return;
+    if(!mp3ok){ synthVoice(); return; }
+    try{ const a=el('voice_'+name); a.currentTime=0; const p=a.play(); if(p&&p.catch)p.catch(function(){ a.__failed=true; mp3ok=false; synthVoice(); }); }catch(e){ mp3ok=false; synthVoice(); }
+  }
   function note(freq,dur,delay,type,vol){
     if(!enabled) return;
     try{

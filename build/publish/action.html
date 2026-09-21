@@ -100,13 +100,17 @@
   var PLAYER_SPD = 156;         // 玩家移动速度 px/s
   var JUMP_V = 392;             // 起跳速度
   var GRAV = 940;               // 重力
+  var RNG_DMG = 16;             // 远程 单次伤害
+  var RNG_SPD = 320;            // 远程 飞行速度 px/s
+  var RNG_CD = 0.55;            // 远程 冷却（秒）
+  var RNG_R = 9;                // 远程 弹体半径
 
   // ---------- 屏幕状态 ----------
   var screen = 'menu';          // menu | select | playing | win | lose
   var curLevel = 1;
   var unlocked = 1;
   var player = { x: 60, y: GY - 70, w: 42, h: 70, vy: 0, onGround: true, facing: 1,
-                 hp: 120, maxhp: 120, cd: 0, swing: 0 };
+                 hp: 120, maxhp: 120, cd: 0, swing: 0, rngCd: 0 };
   var levelCfg = null;
   var enemies = [];
   var boss = null;
@@ -117,6 +121,7 @@
   var waveDelay = 0;
   var score = 0;
   var floats = [];
+  var projectiles = [];         // 远程弹体（玩家/敌人共用）
   var toast = null;
   var shake = 0;
   var whiteFlash = 0;       // Boss 登场白屏闪光
@@ -156,6 +161,7 @@
   var BTN_RIGHT = { x: 72,  y: 316, w: 54, h: 54 };
   var BTN_JUMP  = { x: 132, y: 316, w: 54, h: 54 };
   var BTN_ATK   = { x: W - 78, y: 308, w: 64, h: 64 };
+  var BTN_RANGED= { x: W - 150, y: 308, w: 64, h: 64 };
   var PLAY_MENU = { x: 14,  y: 14,  w: 70, h: 40 };
 
   var MENU_PLAY = { x: W / 2 - 110, y: 208, w: 220, h: 56 };
@@ -306,9 +312,11 @@
     curLevel = lv;
     levelCfg = config(lv);
     player.x = 60; player.y = GY - player.h; player.vy = 0; player.onGround = true;
-    player.hp = player.maxhp; player.cd = 0; player.swing = 0; player.facing = 1;
+    player.cd = 0; player.swing = 0; player.rngCd = 0; player.facing = 1;
+    player.maxhp = 120 + (curLevel - 1) * 14;     // 角色血量随关卡增加
+    player.hp = player.maxhp;
     enemies = []; boss = null; phase = 'waves'; wave = 0; score = 0; floats = []; shake = 0;
-    particles = []; whiteFlash = 0; _loseSfx = false;
+    particles = []; whiteFlash = 0; _loseSfx = false; projectiles = [];
     startWave(0);
     screen = 'playing';
   }
@@ -369,24 +377,38 @@
     if (player.cd > 0) return;
     player.cd = ATK_CD;
     player.swing = ATK_SWING;
+    var dmg = ATK_DMG + (curLevel - 1) * 2;       // 平A 伤害随关卡增加
     var hbx = player.facing > 0 ? player.x + player.w : player.x - ATK_REACH;
     var hby = player.y - 10, hbh = player.h + 12;
     var hit = false;
     for (var i = enemies.length - 1; i >= 0; i--) {
       var e = enemies[i];
       if (aabbRect(hbx, hby, ATK_REACH, hbh, e.x, e.y, e.w, e.h)) {
-        e.hp -= ATK_DMG; e.flash = 0.12; hit = true;
+        e.hp -= dmg; e.flash = 0.12; hit = true;
         var kdir = player.facing > 0 ? 1 : -1;
         e.kbx = kdir * 150; e.kbT = 0.16; e.stun = 0.16;   // 击退 + 硬直
         if (e.hp <= 0) killMob(i);
       }
     }
     if (boss && aabbRect(hbx, hby, ATK_REACH, hbh, boss.x, boss.y, boss.w, boss.h)) {
-      boss.hp -= ATK_DMG; boss.flash = 0.12; shake = Math.max(shake, 0.25); hit = true;
+      boss.hp -= dmg; boss.flash = 0.12; shake = Math.max(shake, 0.25); hit = true;
       var kd = player.facing > 0 ? 1 : -1;
       boss.kbx = kd * 70; boss.kbT = 0.12;                 // Boss 轻微击退
     }
     if (hit) gHit();                              // 攻击命中音效
+  }
+
+  function tryRanged() {
+    if (screen !== 'playing' || player.rngCd > 0) return;
+    player.rngCd = RNG_CD;
+    projectiles.push({
+      x: player.facing > 0 ? player.x + player.w : player.x,
+      y: player.y + player.h * 0.4,
+      vx: player.facing * RNG_SPD,
+      dmg: RNG_DMG + (curLevel - 1) * 1,
+      dir: player.facing, t: 0, dur: 2, from: 'player'
+    });
+    if (window.GinAudio) { try { GinAudio.blip(); } catch (e) {} }  // 远程开火音效
   }
 
   function killMob(i) {
@@ -411,6 +433,7 @@
 
     if (player.cd > 0) player.cd = Math.max(0, player.cd - dt);
     if (player.swing > 0) player.swing = Math.max(0, player.swing - dt);
+    if (player.rngCd > 0) player.rngCd = Math.max(0, player.rngCd - dt);
 
     // 移动
     var mv = 0;
@@ -456,6 +479,31 @@
     // 敌人更新
     for (var i = 0; i < enemies.length; i++) updateMob(enemies[i], dt);
 
+    // 远程弹体推进 / 碰撞
+    for (var pi2 = projectiles.length - 1; pi2 >= 0; pi2--) {
+      var pp = projectiles[pi2];
+      pp.x += pp.vx * dt; pp.t += dt;
+      var removed = false;
+      if (pp.from === 'player') {
+        for (var ei = enemies.length - 1; ei >= 0; ei--) {
+          var en = enemies[ei];
+          if (aabbRect(pp.x, pp.y, RNG_R, RNG_R, en.x, en.y, en.w, en.h)) {
+            en.hp -= pp.dmg; en.flash = 0.12;
+            if (en.hp <= 0) killMob(ei);
+            removed = true; break;
+          }
+        }
+        if (!removed && boss && aabbRect(pp.x, pp.y, RNG_R, RNG_R, boss.x, boss.y, boss.w, boss.h)) {
+          boss.hp -= pp.dmg; boss.flash = 0.12; shake = Math.max(shake, 0.2); removed = true;
+        }
+      } else if (pp.from === 'enemy') {
+        if (aabbRect(pp.x, pp.y, RNG_R, RNG_R, player.x, player.y, player.w, player.h)) {
+          player.hp -= pp.dmg; removed = true;
+        }
+      }
+      if (removed || pp.x < 0 || pp.x > W || pp.t >= pp.dur) projectiles.splice(pi2, 1);
+    }
+
     // Boss 更新
     if (phase === 'boss' && boss) {
       updateBoss(dt);
@@ -484,6 +532,13 @@
     if (e.kbT > 0) { e.x += e.kbx * dt; e.kbT -= dt; if (e.kbT <= 0) e.kbx = 0; }
     if (e.flash > 0) e.flash -= dt;
     if (e.atkT > 0) e.atkT -= dt;
+    if (e.fireCd === undefined) e.fireCd = 2.2;
+    if (e.fireCd > 0) e.fireCd -= dt;
+    if (curLevel >= 4 && e.fireCd <= 0) {
+      e.fireCd = 2.2;
+      projectiles.push({ x: e.x, y: e.y + e.h * 0.4, vx: Math.sign(player.x - e.x) * 240,
+                         dmg: 6 + curLevel, dir: -1, t: 0, dur: 2.2, from: 'enemy' });
+    }
     if (e.stun > 0) { e.stun -= dt; return; }   // 硬直期间不追击 / 不造成伤害
     var px = player.x + player.w / 2, ex = e.x + e.w / 2;
     var dir = px < ex ? -1 : 1;
@@ -520,6 +575,13 @@
       else b.atkTimer = 0.5;
     }
     if (b.flash > 0) b.flash -= dt;
+    if (b.fireCd === undefined) b.fireCd = 2.4;
+    if (b.fireCd > 0) b.fireCd -= dt;
+    if (curLevel >= 4 && b.fireCd <= 0 && Math.abs(px - bx) > b.w / 2 + player.w / 2) {
+      b.fireCd = 2.4;
+      projectiles.push({ x: b.x, y: b.y + b.h * 0.4, vx: Math.sign(px - bx) * 240,
+                         dmg: 6 + curLevel, dir: -1, t: 0, dur: 2.2, from: 'enemy' });
+    }
   }
 
   // ---------- 绘制工具 ----------
@@ -907,6 +969,7 @@
     drawControl(BTN_RIGHT, '▶', PAL.blue);
     drawControl(BTN_JUMP, '⤒', '#5fe08f');
     drawControl(BTN_ATK, '平A', PAL.gold2);
+    drawControl(BTN_RANGED, '远程', '#ff9b3a');
     drawControl(PLAY_MENU, '菜单', PAL.dim);
   }
 
@@ -919,12 +982,25 @@
     ctx.globalAlpha = 1;
   }
 
+  function drawProjectiles() {
+    for (var i = 0; i < projectiles.length; i++) {
+      var p = projectiles[i];
+      var col = p.from === 'player' ? '#ffd23a' : '#d84a3b';
+      ctx.save();
+      ctx.fillStyle = col;
+      ctx.shadowColor = col; ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.arc(p.x, p.y, RNG_R, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  }
+
   function drawPlaying() {
     drawBackground();
     drawGround();
     for (var i = 0; i < enemies.length; i++) drawMob(enemies[i]);
     if (boss) drawBoss();
     drawPlayer();
+    drawProjectiles();
     drawFloats();
     drawHUD();
     drawControls();
@@ -1071,6 +1147,7 @@
     if (hitButton(p, BTN_RIGHT, 44)) { input.right = true; pointers[id] = 'right'; activeBtn = BTN_RIGHT; gClick(); return; }
     if (hitButton(p, BTN_JUMP, 44)) { input.jump = true; pointers[id] = 'jump'; activeBtn = BTN_JUMP; doJump(); return; }   // doJump 内播放跳跃音
     if (hitButton(p, BTN_ATK, 44)) { gClick(); tryAttack(); pointers[id] = 'atk'; activeBtn = BTN_ATK; return; }
+    if (hitButton(p, BTN_RANGED, 44)) { gClick(); tryRanged(); pointers[id] = 'ranged'; activeBtn = BTN_RANGED; return; }
     gClick(); tryAttack();   // 点击战场任意处 = 平A
   }
 
@@ -1126,6 +1203,7 @@
     else if (k === 'ArrowUp' || k === 'w' || k === 'W') { input.jump = true; doJump(); }
     else if (k === ' ' || k === 'Spacebar') { if (!e.repeat) tryAttack(); e.preventDefault(); }
     else if (k === 'j' || k === 'J') { if (!e.repeat) tryAttack(); }
+    else if (k === 'k' || k === 'K') { if (!e.repeat) tryRanged(); }
     else if (k === 'Escape') { if (screen === 'playing') screen = 'menu'; }
   });
   window.addEventListener('keyup', function (e) {
