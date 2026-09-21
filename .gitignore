@@ -15,3 +15,4 @@ build/_verify/_tmp_lamejs/
 
 # 核验过程的临时输出（脚本 .cjs/.mjs 保留入库）
 build/_verify/*.txt
+build/publish/assets/codex/_codex_originals*/

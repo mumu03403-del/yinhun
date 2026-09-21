@@ -4,28 +4,45 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0b0b12">
+<meta name="theme-color" content="#0b0e14">
 <title>银魂 · 侍合戦（合并武士换皮版）</title>
 <style>
+  :root {
+    --bg:#0b0e14;
+    --panel:#141b28;
+    --line:#2a3550;
+    --gold:#e8c15a;
+    --gold2:#ffd23a;
+    --red:#d84a3b;
+    --blue:#3aa7d8;
+    --paper:#f2ead8;
+    --dim:#8a93ad;
+    --wood:#6b4a2b;
+  }
   html, body {
     margin: 0; padding: 0; width: 100%; height: 100%;
-    background: #05050a; overflow: hidden;
+    background: #000; overflow: hidden;            /* black letterbox behind the 812x375 stage */
     -webkit-tap-highlight-color: transparent;
     -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none;
     font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
                  "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
   }
-  #cv { display: block; width: 100%; height: 100%; touch-action: none; }
-  #rot { display: none; position: fixed; inset: 0; z-index: 50; background: #05050a;
-    color: #f7d774; align-items: center; justify-content: center; text-align: center;
-    font-size: 18px; font-weight: 700; padding: 24px; box-sizing: border-box; }
-  #rot.show { display: flex; }
+  /* Stage scaler: logical 812x375, scaled to fit viewport and centered (black letterbox). */
+  #stage {
+    position: absolute; left: 50%; top: 50%;
+    width: 812px; height: 375px;
+    transform: translate(-50%, -50%) scale(1);
+    transform-origin: center center;
+  }
+  #cv { display: block; width: 100%; height: 100%; touch-action: none; background: var(--bg); }
+  #rot { display: none; }
 </style>
 </head>
 <body>
-<canvas id="cv"></canvas>
-<div id="rot">请将手机竖屏握持后继续 ↻</div>
+<div id="stage">
+  <canvas id="cv"></canvas>
+</div>
 <script>
 (function () {
   "use strict";
@@ -34,6 +51,7 @@
    * 合并武士 · 放置图鉴 —— 浏览器直玩版（H5 兜底实现）
    * 与 Cocos 原型 assets/src/data/GameConfig.ts 的数值完全一致。
    * 美术 100% 为代码绘制的纯色块，不含任何图片素材 / 版权角色形象。
+   * 布局：812x375 横屏（左侧棋盘区 + 右侧控制面板），银魂 anime 风格。
    * ========================================================================= */
 
   // ---------- 1. 配置（与 GameConfig.ts 一一对应） ----------
@@ -97,11 +115,6 @@
   var SAVE_KEY = 'merge_samurai_save_v1';
 
   // 12 档解锁门槛（通用映射，仅动作门槛，合并永远免费）：
-  //   tier7:  累计结算 ≥ 3
-  //   tier8:  累计结算 ≥ 10 且 图鉴 6/6（highestTier ≥ 6）
-  //   tier11: 累计结算 ≥ 20
-  //   tier12: 累计结算 ≥ 40 且 图鉴 10/10（highestTier ≥ 10）
-  //   tier9/tier10 无门槛，渐进式解锁。
   var GATE = {
     7: { settle: 3 }, 8: { settle: 10, codex: 6 }, 11: { settle: 20 }, 12: { settle: 40, codex: 10 },
     13: { settle: 5 }, 16: { settle: 8 }, 19: { settle: 12 }, 22: { settle: 18 }, 24: { settle: 25 }
@@ -116,7 +129,6 @@
   }
 
   // 满级结算：长按满级单位 ≥ LONG_PRESS_MS 毫秒 → 兑换为金币并释放该格
-  // 兑换值 = 该档 SETTLE_SECONDS 秒的产出
   var LONG_PRESS_MS = 500;
   var SETTLE_SECONDS = 30;
   var TEXT_DARK = '#141414';
@@ -124,67 +136,86 @@
   // 美术资源相对路径基准；微信小游戏可改为打包内路径（如 'game_assets/'）
   var ASSET_BASE = '';
 
-  // ---------- 2. 逻辑分辨率与布局 ----------
-  var W = 375;
-  var H = 812;
+  // ---------- 2. 逻辑分辨率与布局（横屏 812x375） ----------
+  var W = 812;
+  var H = 375;
 
-  var HUD_H = 74;
-  var GAP = 8;
-  var CELL_MAX = 66;              // 单格最大尺寸（4 行时更紧凑，不会撑爆）
-  var REGION_TOP = 116;          // 棋盘区域上边界（HUD 下方留白）
-  var REGION_BOTTOM = 512;       // 棋盘区域下边界（决定 CELL 自适应缩放）
-  var REGION_H = REGION_BOTTOM - REGION_TOP;   // 396
+  var HUD_H = 64;                  // 右侧面板顶栏高度（仅绘制参考）
+  var GAP = 6;                     // 棋盘格间距
+  var CELL_MAX = 86;               // 单格最大尺寸（受行数 / 宽度自适应缩放）
+
+  // 左侧棋盘区（约 58%）
+  var BOARD_X0 = 12;
+  var BOARD_X1 = 466;
+  var REGION_W = BOARD_X1 - BOARD_X0;            // 454
+  var REGION_TOP = 46;                           // 顶部给「返回首页」按钮留白
+  var REGION_BOTTOM = 366;
+  var REGION_H = REGION_BOTTOM - REGION_TOP;     // 320
+
+  // 右侧控制面板（约 42%）
+  var PANEL_X = 478;
+  var PANEL_W = W - PANEL_X;                      // 334
+  var PX0 = PANEL_X + 12;                         // 面板内容左 = 490
+  var PX1 = W - 12;                               // 面板内容右 = 800
+  var PW = PX1 - PX0;                             // 310
 
   // 以下几何量由 recomputeLayout() 依据当前已解锁行数（GRID_ROWS）计算
   var CELL = 62;
-  var GRID_W = 0, GRID_H = 0, GRID_X = 0, GRID_Y = REGION_TOP;
+  var GRID_W = 0, GRID_H = 0, GRID_X = BOARD_X0, GRID_Y = REGION_TOP;
 
   function cellCenterX(c) { return GRID_X + c * (CELL + GAP) + CELL / 2; }
   function cellCenterY(r) { return GRID_Y + r * (CELL + GAP) + CELL / 2; }
   // 当前可交互的格子数（仅已解锁行参与放置/合并/结算）
   function activeCells() { return GRID_COLS * GRID_ROWS; }
 
-  // CELL 自适应：行数越多格子越小，棋盘恒落在 [REGION_TOP, REGION_BOTTOM] 内，
-  // 其下控件带（招募/解锁/图例/五子棋/平A/重置）位置固定，保证 375×812 全程无重叠。
+  // CELL 自适应：行数越多格子越小；同时受「棋盘区宽度」约束，保证 5 列居中且恒落在
+  // [REGION_TOP, REGION_BOTTOM] 内，其右侧控制面板位置固定，保证 812×375 全程无重叠。
   function recomputeLayout() {
     var rows = Math.max(1, Math.min(MAX_ROWS, GRID_ROWS));
-    CELL = Math.min(CELL_MAX, Math.floor((REGION_H - (rows - 1) * GAP) / rows));
+    var cellH = Math.floor((REGION_H - (rows - 1) * GAP) / rows);
+    var cellW = Math.floor((REGION_W - (GRID_COLS - 1) * GAP) / GRID_COLS);
+    CELL = Math.min(CELL_MAX, cellH, cellW);
     GRID_W = GRID_COLS * CELL + (GRID_COLS - 1) * GAP;
     GRID_H = rows * CELL + (rows - 1) * GAP;
-    GRID_X = (W - GRID_W) / 2;
+    GRID_X = BOARD_X0 + (REGION_W - GRID_W) / 2;
     GRID_Y = REGION_TOP + (REGION_H - GRID_H) / 2;
   }
   recomputeLayout();
 
-  // 底部控件带：固定位置（不随棋盘缩放）
-  var SPAWN_BTN = { x: 16, y: REGION_BOTTOM + 16, w: 164, h: 52 };
-  var UNLOCK_BTN = { x: 196, y: REGION_BOTTOM + 16, w: 163, h: 52 };
-  var COLL_BTN = { x: W - 16 - 74, y: 14, w: 74, h: 46 };
-  // 静音切换按钮（HUD 下方左侧空白区，不与网格/产出重叠）
-  var MUTE_BTN = { x: 16, y: 80, w: 48, h: 34 };
+  // ---------- 右侧面板按钮（固定位置） ----------
+  var HOME_BTN = { x: 12, y: 8, w: 92, h: 30 };                 // 返回首页（棋盘区左上角）
+  var COLL_BTN = { x: 660, y: 14, w: 64, h: 44 };               // 图鉴（HUD 内）
+  var MUTE_BTN = { x: 732, y: 14, w: 56, h: 44 };               // 音乐（HUD 内）
+  var SPAWN_BTN  = { x: PX0,      y: 96,  w: 152, h: 44 };      // 招募 +1
+  var UNLOCK_BTN = { x: PX1 - 152, y: 96,  w: 152, h: 44 };     // 解锁第 N 行
+  var LEGEND_BTN = { x: PX0,      y: 150, w: PW,  h: 38 };      // 档位产出表
+  var GOMOKU_BTN = { x: PX0,      y: 224, w: 152, h: 46 };      // 五子棋
+  var BRAWLER_BTN= { x: PX1 - 152, y: 224, w: 152, h: 46 };    // 平A
+  var FRIEND_BTN = { x: PX0,      y: 278, w: 152, h: 46 };      // 好友
+  var RESET_BTN  = { x: PX1 - 152, y: 278, w: 152, h: 46 };     // 重置存档
+  var TIP_Y = 84;                                              // 免费放置提示行
+  var STATS_Y = 202;                                           // 首页统计行
+  var STATS_BOX = { x: PX0, y: 190, w: PW, h: 26 };
+  var SAVE_NOTE_Y = 336;                                       // 自动存档提示
+
   // 图鉴弹出层的关闭按钮（drawCollection 内绘制）
   var CODEX_CLOSE_BTN = { x: W / 2 - 80, y: H - 96, w: 160, h: 48 };
 
-  var TIP_Y = REGION_BOTTOM + 7;                 // 网格下沿与按钮带之间的单行教学
-  var STATS_Y = 586;                             // 首页统计行
-  var RESET_BTN = { x: W / 2 - 62, y: 754, w: 124, h: 44 };
-  var LEGEND_BTN = { x: W / 2 - 60, y: 602, w: 120, h: 34 };
   var LEGEND_CLOSE_BTN = { x: W / 2 - 80, y: H - 96, w: 160, h: 48 };
   var DETAIL_VOICE_BTN = { x: W / 2 - 70, y: H - 132, w: 140, h: 46 };
   var DETAIL_CLOSE_BTN = { x: W / 2 - 80, y: H - 72, w: 160, h: 46 };
   var LEGEND_ROW = 22;
 
-  // ---------- 五子棋小游戏（角色扮演：你=银 / 敌=鬼；v2 增加人机/双人、角色与背景选择、战绩）----------
-  // 模块级状态：每次打开重置，不写进 localStorage 存档（state 字段保持不动）
+  // ---------- 五子棋小游戏（角色扮演：你=银 / 敌=鬼） ----------
   var GOMOKU_N = 13;                         // 13×13 交叉点
   var GS = 23;                               // 交叉点间距（格 ≈23px）
   var GOMOKU_PAD = 16;                       // 棋盘外框留白
   var BOARD_SPAN = (GOMOKU_N - 1) * GS;      // = 276
-  var GOMOKU_FRAME_W = BOARD_SPAN + GOMOKU_PAD * 2;   // = 308（落在 286–312 内）
-  var GOMOKU_FRAME_X = (W - GOMOKU_FRAME_W) / 2;       // 居中 ≈ 33.5
-  var GOMOKU_FRAME_Y = 120;
-  var GOMOKU_ORIGIN_X = GOMOKU_FRAME_X + GOMOKU_PAD;  // 首个交叉点 x ≈ 49.5
-  var GOMOKU_ORIGIN_Y = GOMOKU_FRAME_Y + GOMOKU_PAD;  // 首个交叉点 y ≈ 136
+  var GOMOKU_FRAME_W = BOARD_SPAN + GOMOKU_PAD * 2;   // = 308
+  var GOMOKU_FRAME_X = 40;                   // 横屏：棋盘置于左侧
+  var GOMOKU_FRAME_Y = 28;
+  var GOMOKU_ORIGIN_X = GOMOKU_FRAME_X + GOMOKU_PAD;  // 首个交叉点 x
+  var GOMOKU_ORIGIN_Y = GOMOKU_FRAME_Y + GOMOKU_PAD;  // 首个交叉点 y
 
   // 五子棋流程：'menu'（选模式/角色/背景） → 'play'（对局）
   var gomokuScreen = 'menu';
@@ -211,25 +242,23 @@
     try { localStorage.setItem(GOMOKU_REC_KEY, JSON.stringify(gomokuRecords)); } catch (e) {}
   }
 
-  // 首页入口按钮（避开 COLL/SPAWN/UNLOCK/LEGEND/RESET/MUTE）
-  var GOMOKU_BTN = { x: W / 2 - 82, y: 646, w: 164, h: 46 };
-  // 弹层内按钮（对局页）
-  var GOMOKU_BACK_BTN = { x: 27.5, y: 500, w: 150, h: 50 };
-  var GOMOKU_RESTART_BTN = { x: 197.5, y: 500, w: 150, h: 50 };
-  // 弹层内按钮（菜单页）
-  var GOMOKU_MENU_MODE_PVE = { x: 24, y: 116, w: 160, h: 48 };
-  var GOMOKU_MENU_MODE_PVP = { x: 191, y: 116, w: 160, h: 48 };
-  var GOMOKU_MENU_CHAR_PREV = { x: 54, y: 196, w: 44, h: 44 };
-  var GOMOKU_MENU_CHAR_NEXT = { x: 277, y: 196, w: 44, h: 44 };
-  var GOMOKU_MENU_CHAR2_PREV = { x: 54, y: 268, w: 44, h: 44 };
-  var GOMOKU_MENU_CHAR2_NEXT = { x: 277, y: 268, w: 44, h: 44 };
+  // 弹层内按钮（对局页）—— 置于右侧控制区
+  var GOMOKU_BACK_BTN = { x: 384, y: 250, w: 168, h: 46 };
+  var GOMOKU_RESTART_BTN = { x: 384, y: 304, w: 168, h: 46 };
+  // 弹层内按钮（菜单页，两列布局）
+  var GOMOKU_MENU_MODE_PVE = { x: 24, y: 64, w: 170, h: 44 };
+  var GOMOKU_MENU_MODE_PVP = { x: 218, y: 64, w: 170, h: 44 };
+  var GOMOKU_MENU_CHAR_PREV = { x: 40, y: 132, w: 48, h: 44 };
+  var GOMOKU_MENU_CHAR_NEXT = { x: 380, y: 132, w: 48, h: 44 };
+  var GOMOKU_MENU_CHAR2_PREV = { x: 40, y: 188, w: 48, h: 44 };
+  var GOMOKU_MENU_CHAR2_NEXT = { x: 380, y: 188, w: 48, h: 44 };
   var GOMOKU_MENU_BG = [
-    { x: 18, y: 350, w: 105, h: 46 },
-    { x: 135, y: 350, w: 105, h: 46 },
-    { x: 252, y: 350, w: 105, h: 46 }
+    { x: 24, y: 240, w: 250, h: 40 },
+    { x: 281, y: 240, w: 250, h: 40 },
+    { x: 538, y: 240, w: 250, h: 40 }
   ];
-  var GOMOKU_MENU_START = { x: 24, y: 612, w: 160, h: 54 };
-  var GOMOKU_MENU_BACK = { x: 191, y: 612, w: 160, h: 54 };
+  var GOMOKU_MENU_START = { x: 24, y: 330, w: 380, h: 40 };
+  var GOMOKU_MENU_BACK = { x: 408, y: 330, w: 380, h: 40 };
 
   var gomokuOpen = false;
   var gomokuBoard = [];        // 13×13，0=空,1=玩家(银),2=AI(鬼)
@@ -250,12 +279,10 @@
   }
   resetGomoku();
 
-  // ---------- 5d. 横板平A小游戏（side-scroll beat-em-up）----------
-  // 模块级状态：每次打开重置，不写进 localStorage 存档（state 字段保持不动）
-  var BRAWLER_BTN = { x: W / 2 - 82, y: 700, w: 164, h: 46 };
-  var BRAWLER_BACK_BTN = { x: 27.5, y: 744, w: 150, h: 50 };
-  var BRAWLER_RESTART_BTN = { x: 197.5, y: 744, w: 150, h: 50 };
-  var BRAWLER_GY = 664;            // 地面线 y
+  // ---------- 横板平A小游戏（side-scroll beat-em-up） ----------
+  var BRAWLER_BACK_BTN = { x: 620, y: 250, w: 170, h: 46 };
+  var BRAWLER_RESTART_BTN = { x: 620, y: 304, w: 170, h: 46 };
+  var BRAWLER_GY = 284;            // 地面线 y
   var BRAWLER_R = 26;             // 角色半径
   var BRAWLER_SPAWN_INT = 0.85;   // 敌人生成间隔（秒）
   var BRAWLER_WAVE_DELAY = 1.2;   // 波次间隔（秒）
@@ -277,7 +304,6 @@
   var brawlerWaveDelay = 0;
 
   function brawlerWaveCount(w) {
-    // 每波 4–5 个敌人（末波略多）
     return (w === 0) ? 4 : (w === 1 ? 5 : 5);
   }
 
@@ -299,7 +325,7 @@
       y: BRAWLER_GY - BRAWLER_R,
       hp: 30, maxhp: 30,
       spd: 55 + Math.random() * 25,
-      dps: 8 + Math.random() * 4,   // 接触玩家时每秒掉血量
+      dps: 8 + Math.random() * 4,
       dead: false
     });
   }
@@ -310,14 +336,11 @@
     if (!brawlerOpen) return;
     if (brawlerOver) return;
 
-    // 玩家缓慢右移（封顶避免出屏）
     bw.x += BRAWLER_PLAYER_SPD * dt;
     if (bw.x > W - 90) bw.x = W - 90;
 
-    // 攻击窗口衰减
     if (bw.atkT > 0) bw.atkT = Math.max(0, bw.atkT - dt);
 
-    // 波次生成逻辑
     if (brawlerWaveDelay > 0) {
       brawlerWaveDelay -= dt;
     } else if (brawlerSpawnLeft > 0) {
@@ -328,7 +351,6 @@
         brawlerSpawnLeft--;
       }
     } else if (enemies.length === 0) {
-      // 本波清空 → 进入下一波或通关
       if (brawlerWave < BRAWLER_WAVE_TOTAL - 1) {
         brawlerWave++;
         brawlerSpawnLeft = brawlerWaveCount(brawlerWave);
@@ -345,9 +367,8 @@
       }
     }
 
-    // 敌人移动 / 触身掉玩家血 / 平A 命中
     var frontX = bw.x + BRAWLER_R;
-    var stopX = bw.x + (BRAWLER_R * 2 - 6);   // 抵达玩家右侧即停（避免穿过去漏怪）
+    var stopX = bw.x + (BRAWLER_R * 2 - 6);
     for (var i = enemies.length - 1; i >= 0; i--) {
       var e = enemies[i];
       if (e.x > stopX) {
@@ -372,7 +393,6 @@
       }
     }
 
-    // 玩家阵亡
     if (bw.hp <= 0) {
       bw.hp = 0;
       brawlerOver = true;
@@ -387,20 +407,18 @@
   }
 
   function drawBrawler() {
-    ctx.fillStyle = 'rgba(6,6,12,1)';   // 完全不透明遮罩
+    ctx.fillStyle = 'rgba(6,6,12,1)';
     ctx.fillRect(0, 0, W, H);
 
-    text('横板平A · 清小怪', W / 2, 56, 22, '#ffffff', 'center', '800');
+    text('横板平A · 清小怪', W / 2, 30, 22, '#ffffff', 'center', '800', SERIF);
     text('波次 ' + (brawlerWave + 1) + '/' + BRAWLER_WAVE_TOTAL + '    分数 ' + brawlerScore,
-         W / 2, 86, 15, '#f0e2a8', 'center', '700');
+         W / 2, 56, 15, '#f0e2a8', 'center', '700');
 
-    // 地面线
     ctx.strokeStyle = 'rgba(255,255,255,0.22)';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(0, BRAWLER_GY); ctx.lineTo(W, BRAWLER_GY); ctx.stroke();
 
-    // 敌人（红圆 + 敌字 + 血条）
     for (var i = 0; i < enemies.length; i++) {
       var e = enemies[i];
       ctx.beginPath();
@@ -411,7 +429,6 @@
       drawBar(e.x - BRAWLER_R, e.y - BRAWLER_R - 10, BRAWLER_R * 2, 5, e.hp / e.maxhp, '#e74c3c');
     }
 
-    // 玩家（金圆 + 银字 + 木刀短线）
     ctx.beginPath();
     ctx.arc(bw.x, bw.y, BRAWLER_R, 0, Math.PI * 2);
     ctx.fillStyle = '#f1c40f';
@@ -423,31 +440,28 @@
     ctx.moveTo(bw.x + BRAWLER_R, bw.y);
     ctx.lineTo(bw.x + BRAWLER_R + 26, bw.y - 8);
     ctx.stroke();
-    // 攻击窗口高亮（前方 hitbox）
     if (bw.atkT > 0) {
       ctx.fillStyle = 'rgba(247,215,116,0.18)';
       ctx.fillRect(bw.x, bw.y - BRAWLER_R, BRAWLER_REACH + BRAWLER_R, BRAWLER_R * 2);
     }
     drawBar(bw.x - BRAWLER_R, bw.y - BRAWLER_R - 10, BRAWLER_R * 2, 6, bw.hp / bw.maxhp, '#2ecc71');
 
-    // 操作提示
-    text('点击屏幕发动平A清怪', W / 2, BRAWLER_GY + 28, 12, '#6d6d83', 'center', '500');
+    text('点击屏幕发动平A清怪', W / 2, BRAWLER_GY + 22, 12, '#6d6d83', 'center', '500');
 
     drawButton(BRAWLER_BACK_BTN, '返回', '#3498db');
     drawButton(BRAWLER_RESTART_BTN, '重新开始', '#e67e22');
 
-    // 战斗结束叠加结果
     if (brawlerOver) {
-      text(brawlerResult, W / 2, 360, 40,
+      text(brawlerResult, W / 2, 200, 40,
            brawlerResult === '通关！' ? '#5fe08f' : '#e74c3c', 'center', '800');
       text(brawlerResult === '通关！' ? '奖励 +2000 金币（每击杀 +50）' : '再接再厉！',
-           W / 2, 400, 15, '#ffe58a', 'center', '700');
+           W / 2, 240, 15, '#ffe58a', 'center', '700');
     }
   }
 
   // ---------- 3. 状态 ----------
   var state = {
-    cells: new Array(GRID_COLS * MAX_ROWS).fill(0),   // 固定最大尺寸（行解锁只需提升 GRID_ROWS，旧存档可无损迁移）
+    cells: new Array(GRID_COLS * MAX_ROWS).fill(0),
     coins: 0,
     highestTier: 1,
     merges: 0,
@@ -455,46 +469,42 @@
     settles: 0
   };
 
-  // 图鉴碎片系统：fragments[t]（1..MAX_TIER，0=占位）每档 0..10；codexDone[t] 记录是否达成 10/10
   var fragments = new Array(MAX_TIER + 1).fill(0);
   var codexDone = new Array(MAX_TIER + 1).fill(false);
-  var celebration = null;          // 图鉴达成庆祝弹层 { tier, t, dur }
-  // 解锁行状态（仅 GRID_ROWS 反映当前已解锁行数；unlockedRows 写入存档）
-
-  var selected = -1;              // 点选选中的格子索引
-  var anim = [];                  // 每格动画 { t, dur, kind }
+  var celebration = null;
+  var selected = -1;
+  var anim = [];
   for (var ai = 0; ai < GRID_COLS * MAX_ROWS; ai++) anim.push({ t: 1, dur: 1, kind: null });
 
-  var drag = null;                // { from, x, y, active }
-  var floats = [];                // 飘字
-  var toast = null;               // 顶部提示 { text, t }
-  var modal = null;               // { title, amount, t }
+  var drag = null;
+  var floats = [];
+  var toast = null;
+  var modal = null;
   var collectionOpen = false;
-  var legendOpen = false;             // 第3点：首页图例改为点击展开
-  var detailOpen = false;             // 第1点：图鉴卡放大详情
+  var legendOpen = false;
+  var detailOpen = false;
   var detailTier = 0;
-  var collectionScrollY = 0;          // 第1点：图鉴卡片纵向滚动位移
+  var collectionScrollY = 0;
   var collectionMaxScroll = 0;
-  var autoSpawnTimer = 0;             // 第4点：放置自动发角色计时
+  var autoSpawnTimer = 0;
   var AUTO_SPAWN_INTERVAL = 45;
-  var pressedBtn = null;              // 第6点：按钮按下态
+  var pressedBtn = null;
   var lastFrame = 0;
   var saveTimer = 0;
   var bgPulse = 0;
-  var clock = 0;                 // 全局时钟（秒），驱动立绘呼吸/微缩放
-  var particles = [];            // 合并粒子特效
-  var screenShake = 0;           // 屏幕震动幅度（合并时触发，update 中衰减）
-  var muted = false;             // 静音开关
-  // 美术资源缓存（按 tier 1-based 索引；加载失败则保持 null → 回落代码绘制色块）
+  var clock = 0;
+  var particles = [];
+  var screenShake = 0;
+  var muted = false;
   var boardImg = new Array(MAX_TIER + 1).fill(null);
   var codexImg = new Array(MAX_TIER + 1).fill(null);
   var voiceAud = new Array(MAX_TIER + 1).fill(null);
   var loadedBoard = 0, loadedCodex = 0, loadedAudio = 0;
-  var codexRects = [];           // 图鉴卡命中区（drawCollection 写入，输入层读取）
-  var press = { i: -1, t: 0, timer: null };   // 满级单位长按状态
+  var codexRects = [];
+  var press = { i: -1, t: 0, timer: null };
 
   // ---------- 4. 存档 ----------
-  var suppressSave = false;   // 重置存档时置位，避免旧状态被自动存档回写
+  var suppressSave = false;
 
   function save() {
     if (suppressSave) return false;
@@ -524,14 +534,12 @@
     try { d = JSON.parse(raw); } catch (e) { return; }
     if (!d || !Array.isArray(d.cells)) return;
 
-    // 行列数可能随版本变化（旧档 20 格 → 新档 40 格）：按最小长度安全迁移，绝不整体拒绝
     var n = Math.min(d.cells.length, state.cells.length);
     for (var i = 0; i < n; i++) {
       var t = Number(d.cells[i]) || 0;
       state.cells[i] = Math.max(0, Math.min(MAX_TIER, Math.floor(t)));
     }
 
-    // 已解锁行数（缺省 4 行）；写入后再重算布局
     if (typeof d.unlockedRows === 'number') {
       GRID_ROWS = Math.max(4, Math.min(MAX_ROWS, Math.floor(d.unlockedRows)));
     }
@@ -543,7 +551,6 @@
     state.spawns = Number(d.spawns) || 0;
     state.settles = Number(d.settles) || 0;
 
-    // 图鉴碎片 / 达成（缺失则全 0 / false，兼容旧档）
     if (Array.isArray(d.fragments)) {
       for (var fi = 1; fi <= MAX_TIER; fi++) {
         fragments[fi] = Math.max(0, Math.min(10, Number(d.fragments[fi]) || 0));
@@ -553,7 +560,6 @@
       for (var ci2 = 1; ci2 <= MAX_TIER; ci2++) codexDone[ci2] = !!d.codexDone[ci2];
     }
 
-    // 离线收益
     var elapsed = Math.max(0, (Date.now() - (Number(d.time) || Date.now())) / 1000);
     if (elapsed > 60) {
       var rate = coinsPerSecond();
@@ -567,7 +573,7 @@
   }
 
   function resetAll() {
-    suppressSave = true;      // 先关掉自动存档，再清档，防止被回写
+    suppressSave = true;
     try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
     location.reload();
   }
@@ -589,7 +595,6 @@
     var empties = [];
     for (var i = 0; i < activeCells(); i++) if (state.cells[i] === 0) empties.push(i);
     if (empties.length === 0) {
-      // 满盘时给出真正可行的解法：先长按结算满级单位腾位
       toast = {
         text: hasMaxTierUnit()
           ? '格子已满：长按满级单位变现可腾出空位'
@@ -605,12 +610,11 @@
     return true;
   }
 
-  // 第4点：放置自动发角色（不依赖手动招募；按权重随机 tier，避免总刷 1 档）
   function autoSpawn() {
     var empties = [];
     for (var i = 0; i < activeCells(); i++) if (state.cells[i] === 0) empties.push(i);
-    if (empties.length === 0) return;                      // 满盘不自动放置
-    var cap = Math.max(1, state.highestTier - 3);          // 不会大幅超前当前进度
+    if (empties.length === 0) return;
+    var cap = Math.max(1, state.highestTier - 3);
     var weights = [], total = 0;
     for (var t = 1; t <= cap; t++) { var w = Math.pow(t, 1.3); weights.push(w); total += w; }
     var roll = Math.random() * total, chosen = 1;
@@ -633,7 +637,6 @@
       toast = { text: '已是最高档（' + MAX_TIER + ' 档）：长按可变现金币', t: 2.0 };
       return false;
     }
-    // 通用解锁门槛：门槛未达成则拦截「合入该档」；创建合并（<MAX_TIER）始终允许。
     var targetTier = tt + 1;
     if (!tierGateOk(targetTier)) {
       toast = { text: gateGoalText(targetTier), t: 2.4 };
@@ -646,7 +649,6 @@
     anim[from] = { t: 0, dur: 0.2, kind: 'clear' };
     if (state.cells[to] > state.highestTier) state.highestTier = state.cells[to];
 
-    // 图鉴碎片系统：每次产出 tier-t 单位 +1（上限 10）；首次满 10/10 触发首页庆祝
     var newTier = state.cells[to];
     fragments[newTier] = Math.min(10, (fragments[newTier] || 0) + 1);
     if (fragments[newTier] >= 10 && !codexDone[newTier]) {
@@ -657,7 +659,6 @@
     var cx = cellCenterX(to % GRID_COLS), cy = cellCenterY(Math.floor(to / GRID_COLS));
     floats.push({ x: cx, y: cy, t: 0, dur: 1.0, text: '合体 → ' + newTier + '档' });
     bgPulse = 0.35;
-    // 高 impact 合并特效：粒子 + 屏幕震动 + 该档原声 + 合并音效
     spawnParticles(cx, cy);
     screenShake = Math.min(1, screenShake + 0.6);
     playVoice(newTier);
@@ -665,12 +666,10 @@
     return true;
   }
 
-  // 图鉴首次达成 10/10：在首页弹出一个卡片 + 光晕 + 粒子，并播放解锁音效（缺 sfx 时回落原声）
   function triggerCodexCelebration(tier) {
     celebration = { tier: tier, t: 0, dur: 3.4 };
     playSfx('sfx_unlock');
-    playVoice(tier);   // sfx 缺失时的兜底
-    // 撒一圈金色粒子做庆祝
+    playVoice(tier);
     var cxp = W / 2, cyp = H * 0.42;
     for (var k = 0; k < 18; k++) {
       var ang = (Math.PI * 2 * k) / 18 + Math.random() * 0.3;
@@ -683,11 +682,6 @@
     }
   }
 
-  /**
-   * 满级结算：把满级单位兑换成金币并释放格子。
-   * 解决「棋盘被满级单位填满后永久卡死」的问题。
-   * 兑换值 = 该档 SETTLE_SECONDS 秒的产出。
-   */
   function settleValue(tier) { return SETTLE_SECONDS * COIN_RATE[tier - 1]; }
 
   function doSettle(i) {
@@ -712,8 +706,7 @@
 
   function canSettle(i) { return i >= 0 && state.cells[i] === MAX_TIER; }
 
-  // ---------- 5c. 五子棋小游戏逻辑（玩家 vs 简单启发式 AI）----------
-  // 检查 who 是否在棋盘 b 上形成 ≥5 连（水平/垂直/两条对角线）
+  // ---------- 五子棋小游戏逻辑 ----------
   function gomokuWin(b, who) {
     var dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
     for (var r = 0; r < GOMOKU_N; r++) {
@@ -722,7 +715,6 @@
         for (var di = 0; di < dirs.length; di++) {
           var dr = dirs[di][0], dc = dirs[di][1];
           var pr = r - dr, pc = c - dc;
-          // 仅从连段起点计数，避免重复
           if (pr >= 0 && pr < GOMOKU_N && pc >= 0 && pc < GOMOKU_N && b[pr][pc] === who) continue;
           var cnt = 0, rr = r, cc = c;
           while (rr >= 0 && rr < GOMOKU_N && cc >= 0 && cc < GOMOKU_N && b[rr][cc] === who) {
@@ -735,7 +727,6 @@
     return false;
   }
 
-  // 若 who 落在 (r,c)（该点为空），沿 4 方向能连成的最大子数
   function gomokuRun(r, c, who) {
     var dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
     var max = 1;
@@ -754,7 +745,6 @@
     return max;
   }
 
-  // 把连段长度映射为分值（1→1, 2→10, 3→100, 4→1000）
   function gomokuEval(r, c, who) {
     return Math.pow(10, Math.max(0, gomokuRun(r, c, who) - 1));
   }
@@ -766,7 +756,6 @@
     return true;
   }
 
-  // 记录战绩（人机 / 双人 分开；以玩家1视角：胜=who1，负=who2，平=0）
   function gomokuRecordResult(who) {
     var key = (gomokuMode === 'pvp') ? 'pvp' : 'pve';
     if (who === 0) gomokuRecords[key].draw++;
@@ -775,7 +764,6 @@
     saveGomokuRecords();
   }
 
-  // 落子后判定胜负/平局；记录战绩，玩家（PvE）胜时发金币奖励
   function gomokuAfterMove(who) {
     if (gomokuWin(gomokuBoard, who)) {
       gomokuOver = true;
@@ -785,7 +773,7 @@
         gomokuResult = (who === 1) ? '玩家胜' : '敌方胜';
       }
       gomokuRecordResult(who);
-      if (who === 1 && gomokuMode === 'pve') rewardGomokuWin();   // 仅人机模式玩家胜给金币
+      if (who === 1 && gomokuMode === 'pve') rewardGomokuWin();
       return;
     }
     if (gomokuBoardFull()) {
@@ -796,7 +784,6 @@
   }
 
   function rewardGomokuWin() {
-    // state 含 coins 字段 → 加奖励金币并提示（存档字段不增删，仅改值）
     if (typeof state.coins === 'number') {
       state.coins += 1000;
       toast = { text: '五子棋获胜！金币 +1000', t: 2.4 };
@@ -804,7 +791,6 @@
     }
   }
 
-  // 菜单页输入：模式 / 角色 / 背景 / 开始 / 返回
   function handleGomokuMenuInput(p) {
     if (hitButton(p, GOMOKU_MENU_BACK, 44)) { gomokuOpen = false; return; }
     if (hitButton(p, GOMOKU_MENU_MODE_PVE, 44)) { gomokuMode = 'pve'; gomokuPName2 = '鬼'; return; }
@@ -833,11 +819,9 @@
     if (side === 1) gomokuPName = names[idx]; else gomokuPName2 = names[idx];
   }
 
-  // 简单启发式 AI：优先成5 > 堵玩家成5 > 在已有棋子附近按连段分落子
   function aiGomokuMove() {
     if (!gomokuOpen || gomokuOver || gomokuTurn !== 2) return;
 
-    // 候选点：与已有棋子相距 ≤2 的空交叉点（避免全盘随机）；空盘则走中心
     var cands = [];
     var anyStone = false;
     for (var r = 0; r < GOMOKU_N; r++)
@@ -858,21 +842,18 @@
     }
     if (cands.length === 0) return;
 
-    // 1) AI 能直接成5 → 落子
     for (var i = 0; i < cands.length; i++) {
       var r = cands[i][0], c = cands[i][1];
       gomokuBoard[r][c] = 2;
       if (gomokuWin(gomokuBoard, 2)) { gomokuAfterMove(2); if (!gomokuOver) gomokuTurn = 1; return; }
       gomokuBoard[r][c] = 0;
     }
-    // 2) 堵玩家成5 → 落子
     for (var j = 0; j < cands.length; j++) {
       var rr2 = cands[j][0], cc2 = cands[j][1];
       gomokuBoard[rr2][cc2] = 1;
       if (gomokuWin(gomokuBoard, 1)) { gomokuBoard[rr2][cc2] = 2; gomokuAfterMove(2); if (!gomokuOver) gomokuTurn = 1; return; }
       gomokuBoard[rr2][cc2] = 0;
     }
-    // 3) 启发式打分：自身连段分 + 对手连段分（略低权重），再微偏好中心
     var best = null, bestScore = -1;
     for (var k = 0; k < cands.length; k++) {
       var r3 = cands[k][0], c3 = cands[k][1];
@@ -891,17 +872,15 @@
 
   function drawGomoku() {
     var bg = GOMOKU_BGS[gomokuBG] || GOMOKU_BGS[0];
-    ctx.fillStyle = bg.bg;                     // 背景主题铺底
+    ctx.fillStyle = bg.bg;
     ctx.fillRect(0, 0, W, H);
     var title = (gomokuMode === 'pvp')
       ? ('五子棋 · ' + gomokuPName + ' vs ' + gomokuPName2)
       : ('五子棋 · ' + gomokuPName + ' vs ' + gomokuPName2);
-    text(title, W / 2, 56, 20, '#ffffff', 'center', '800');
+    text(title, GOMOKU_FRAME_X + GOMOKU_FRAME_W / 2, 18, 18, '#ffffff', 'center', '800', SERIF);
 
-    // 棋盘外框（背景主题着色）
     fillRR(GOMOKU_FRAME_X, GOMOKU_FRAME_Y, GOMOKU_FRAME_W, GOMOKU_FRAME_W, 14, bg.frame);
 
-    // 网格线（主题色）
     ctx.strokeStyle = bg.line;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -913,7 +892,6 @@
     }
     ctx.stroke();
 
-    // 星位（13 路：3/6/9）
     var stars = [3, 6, 9];
     ctx.fillStyle = bg.star;
     for (var a = 0; a < stars.length; a++)
@@ -923,7 +901,6 @@
         ctx.fill();
       }
 
-    // 棋子（圆，标签取角色名首字）
     for (var r = 0; r < GOMOKU_N; r++)
       for (var c = 0; c < GOMOKU_N; c++) {
         var v = gomokuBoard[r][c];
@@ -939,60 +916,58 @@
         text(label, px, py, 15, v === 1 ? '#141414' : '#ffffff', 'center', '800');
       }
 
-    // 回合 / 胜负提示
+    // 右侧控制区：回合 / 胜负提示
     var curName = (gomokuTurn === 1) ? gomokuPName : gomokuPName2;
     var prompt = gomokuOver
       ? ('结果：' + gomokuResult)
       : (gomokuMode === 'pve' && gomokuTurn === 2 ? '敌方思考中…（' + gomokuPName2 + '）' : '轮到 ' + curName + ' 落子');
-    text(prompt, W / 2, GOMOKU_FRAME_Y + GOMOKU_FRAME_W + 26, 15,
-         gomokuOver ? (gomokuResult.indexOf('胜') >= 0 ? '#5fe08f' : '#e74c3c') : '#f0e2a8', 'center', '700');
+    text(prompt, 468, 120, 15,
+         gomokuOver ? (gomokuResult.indexOf('胜') >= 0 ? '#5fe08f' : '#e74c3c') : '#f0e2a8', 'left', '700');
     if (gomokuResult === '玩家胜') {
-      text('奖励 +1000 金币', W / 2, GOMOKU_FRAME_Y + GOMOKU_FRAME_W + 50, 13, '#ffe58a', 'center', '700');
+      text('奖励 +1000 金币', 468, 146, 13, '#ffe58a', 'left', '700');
     }
 
     drawButton(GOMOKU_BACK_BTN, '返回', '#3498db');
     drawButton(GOMOKU_RESTART_BTN, '重新开始', '#e67e22');
   }
 
-  // 五子棋菜单页：模式 / 角色 / 背景 / 战绩 / 开始
   function drawGomokuMenu() {
     ctx.fillStyle = 'rgba(6,6,12,1)';
     ctx.fillRect(0, 0, W, H);
-    text('五子棋', W / 2, 56, 26, '#ffffff', 'center', '800');
-    text('选择模式 · 角色 · 棋盘', W / 2, 86, 12, '#9a9ab0', 'center', '500');
+    text('五子棋', W / 2, 32, 26, '#ffffff', 'center', '800', SERIF);
+    text('选择模式 · 角色 · 棋盘', W / 2, 56, 12, '#9a9ab0', 'center', '500');
 
-    text('对战模式', 24, 104, 13, '#9a9ab0', 'left', '600');
-    drawButton(GOMOKU_MENU_MODE_PVE, '人机对战', gomokuMode === 'pve' ? '#f7d774' : '#3498db');
-    drawButton(GOMOKU_MENU_MODE_PVP, '双人面对面', gomokuMode === 'pvp' ? '#f7d774' : '#3498db');
+    text('对战模式', 24, 52, 13, '#9a9ab0', 'left', '600');
+    drawButton(GOMOKU_MENU_MODE_PVE, '人机对战', gomokuMode === 'pve' ? '#f7d774' : '#3498db', gomokuMode === 'pve');
+    drawButton(GOMOKU_MENU_MODE_PVP, '双人面对面', gomokuMode === 'pvp' ? '#f7d774' : '#3498db', gomokuMode === 'pvp');
 
-    text('你的角色（外观）', 24, 184, 13, '#9a9ab0', 'left', '600');
+    text('你的角色（外观）', 24, 116, 13, '#9a9ab0', 'left', '600');
     drawButton(GOMOKU_MENU_CHAR_PREV, '◀', '#34495e');
     drawButton(GOMOKU_MENU_CHAR_NEXT, '▶', '#34495e');
-    text(gomokuPName, W / 2, 218, 18, '#f7d774', 'center', '800');
+    text(gomokuPName, W / 2, 154, 18, '#f7d774', 'center', '800');
 
     if (gomokuMode === 'pvp') {
-      text('对手角色（外观）', 24, 256, 13, '#9a9ab0', 'left', '600');
+      text('对手角色（外观）', 24, 178, 13, '#9a9ab0', 'left', '600');
       drawButton(GOMOKU_MENU_CHAR2_PREV, '◀', '#34495e');
       drawButton(GOMOKU_MENU_CHAR2_NEXT, '▶', '#34495e');
-      text(gomokuPName2, W / 2, 290, 18, '#f7d774', 'center', '800');
+      text(gomokuPName2, W / 2, 210, 18, '#f7d774', 'center', '800');
     }
 
-    text('棋盘背景', 24, 338, 13, '#9a9ab0', 'left', '600');
+    text('棋盘背景', 24, 228, 13, '#9a9ab0', 'left', '600');
     for (var bi = 0; bi < GOMOKU_MENU_BG.length; bi++) {
-      drawButton(GOMOKU_MENU_BG[bi], GOMOKU_BGS[bi].name, gomokuBG === bi ? '#f7d774' : '#34495e');
+      drawButton(GOMOKU_MENU_BG[bi], GOMOKU_BGS[bi].name, gomokuBG === bi ? '#f7d774' : '#34495e', gomokuBG === bi);
     }
 
     var rec = gomokuRecords;
     text('战绩  人机 ' + rec.pve.win + '胜' + rec.pve.loss + '负' + rec.pve.draw + '平   ·   双人 ' +
          rec.pvp.win + '胜' + rec.pvp.loss + '负' + rec.pvp.draw + '平',
-         W / 2, 424, 12, '#9fe0ff', 'center', '600');
+         W / 2, 300, 12, '#9fe0ff', 'center', '600');
 
-    drawButton(GOMOKU_MENU_START, '开始对战', '#2ecc71');
+    drawButton(GOMOKU_MENU_START, '开始对战', '#2ecc71', true);
     drawButton(GOMOKU_MENU_BACK, '返回', '#3498db');
   }
 
-  // ---------- 5a. 合并特效 & 原声 ----------
-  // 第6点：合并撒 8 颗金粉，拖尾衰减更缓
+  // ---------- 合并特效 & 原声 ----------
   function spawnParticles(cx, cy) {
     for (var k = 0; k < 8; k++) {
       var ang = Math.random() * Math.PI * 2;
@@ -1005,7 +980,6 @@
     }
   }
 
-  // 播放某档原声：muted 时不播；HTML5 Audio 与微信 innerAudio 双分支
   function playVoice(tier) {
     if (muted) return;
     var a = voiceAud[tier];
@@ -1015,15 +989,13 @@
         a.currentTime = 0;
         var pr = a.play();
         if (pr && typeof pr.catch === 'function') pr.catch(function () {});
-      } else if (typeof a.seek === 'function') {   // wx.createInnerAudioContext
+      } else if (typeof a.seek === 'function') {
         a.seek(0);
         a.play();
       }
-    } catch (e) { /* 音频播放失败不影响游戏 */ }
+    } catch (e) { }
   }
 
-  // SFX：合并/结算/解锁音效（sfx_merge / sfx_settle / sfx_unlock）。
-  // 文件缺失或播放失败一律静默，绝不抛异常（另一个 worker 负责生成这些文件）。
   var sfxCache = {};
   function playSfx(name) {
     if (muted) return;
@@ -1037,10 +1009,9 @@
       a.currentTime = 0;
       var pr = a.play();
       if (pr && typeof pr.catch === 'function') pr.catch(function () {});
-    } catch (e) { /* fail silently */ }
+    } catch (e) { }
   }
 
-  // 美术资源预加载（boot 时调用）：立绘/图鉴图 + 原声；失败回落代码绘制，绝不抛异常
   function loadAssets() {
     var useWx = (typeof wx !== 'undefined');
     for (var t = 1; t <= MAX_TIER; t++) {
@@ -1073,12 +1044,9 @@
     }
   }
 
-  // ---------- 5b. 12 档解锁门槛（通用映射，仅动作门槛，合并永远免费） ----------
   function tier7Unlocked() { return tierGateOk(7); }
   function tier8Unlocked() { return tierGateOk(8); }
 
-  // 图鉴卡解锁状态：非门槛档沿用渐进式（highestTier 达成即解锁）；
-  // 门槛档（7/8/11/12）额外要求对应门槛已满足，否则显示「锁定 + 门槛条件」。
   function codexCardUnlocked(tier) {
     if (GATE_TIERS[tier]) return state.highestTier >= tier && tierGateOk(tier);
     return state.highestTier >= tier;
@@ -1095,7 +1063,6 @@
     if (tier === 24) return '累计变现满 25 次，解锁 24 档（终焉）';
     return '';
   }
-  // 图例紧凑短标签（2 列布局空间有限，用缩写避免溢出；完整条件见图鉴弹层）
   function gateShort(tier) {
     if (tier === 7) return '变现3次';
     if (tier === 8) return '变现10·图6/6';
@@ -1120,7 +1087,7 @@
       press.i = -1;
       press.t = 0;
       if (doSettle(idxPressed)) {
-        pointer.settled = true;   // 压住本次 pointerup，避免再被当成点选
+        pointer.settled = true;
       }
     }, LONG_PRESS_MS);
   }
@@ -1135,60 +1102,33 @@
   var cv = document.getElementById('cv');
   var ctx = cv.getContext('2d');
   var view = { scale: 1, ox: 0, oy: 0, dpr: 1 };
-
-  // 安全区探针：读出 env(safe-area-inset-*) 实际像素值（刘海 / Home 条）。
-  // 不支持 env() 或桌面端返回 0，行为退化为原版，不影响 57/57 回归。
-  var safeProbe = document.createElement('div');
-  safeProbe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;' +
-    'padding:env(safe-area-inset-top) env(safe-area-inset-right) ' +
-    'env(safe-area-inset-bottom) env(safe-area-inset-left);';
-  document.documentElement.appendChild(safeProbe);
-  function readSafeArea() {
-    try {
-      var cs = getComputedStyle(safeProbe);
-      return {
-        top: parseFloat(cs.paddingTop) || 0,
-        right: parseFloat(cs.paddingRight) || 0,
-        bottom: parseFloat(cs.paddingBottom) || 0,
-        left: parseFloat(cs.paddingLeft) || 0
-      };
-    } catch (e) { return { top: 0, right: 0, bottom: 0, left: 0 }; }
-  }
+  var SERIF = '"Hiragino Mincho ProN","Yu Mincho","Noto Serif SC","STSong","SimSun",serif';
 
   function resize() {
     var dpr = Math.min(window.devicePixelRatio || 1, 3);
     var vw = window.innerWidth, vh = window.innerHeight;
-    cv.width = Math.round(vw * dpr);
-    cv.height = Math.round(vh * dpr);
-    cv.style.width = vw + 'px';
-    cv.style.height = vh + 'px';
-
-    // 把游戏整体放进「安全区带」内：顶部让出刘海、底部让出 Home 条（P1-2）
-    var sa = readSafeArea();
-    var availW = Math.max(1, vw - sa.left - sa.right);
-    var availH = Math.max(1, vh - sa.top - sa.bottom);
-    var pad = 12;
-    var scale = Math.min((availW - pad * 2) / W, (availH - pad * 2) / H);
+    var stage = document.getElementById('stage');
+    // 横屏舞台缩放器：scale = min(vw/812, vh/375)，居中 + 黑边。
+    // 注意：缩放完全由 #stage 的 CSS transform 承担，canvas 自身只按 DPR 放大，避免双重缩放。
+    var scale = Math.min(vw / W, vh / H);
     if (!isFinite(scale) || scale <= 0) scale = 1;
     view.scale = scale;
-    view.ox = sa.left + (availW - W * scale) / 2;
-    view.oy = sa.top + (availH - H * scale) / 2;
+    view.ox = 0;
+    view.oy = 0;
     view.dpr = dpr;
-    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * view.ox, dpr * view.oy);
-
-    // P2-4：手机尺寸的横向握持时叠加「请竖屏」提示层
-    var landscape = vw > vh && Math.min(vw, vh) < 600;
-    var rot = document.getElementById('rot');
-    if (rot) rot.classList.toggle('show', landscape);
+    cv.width = Math.round(W * dpr);
+    cv.height = Math.round(H * dpr);
+    cv.style.width = W + 'px';
+    cv.style.height = H + 'px';
+    if (stage) stage.style.transform = 'translate(-50%, -50%) scale(' + scale + ')';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  window.addEventListener('resize', resize);
-  window.addEventListener('orientationchange', function () { setTimeout(resize, 120); });
 
   function toLogic(ev) {
     var r = cv.getBoundingClientRect();
     return {
-      x: (ev.clientX - r.left - view.ox) / view.scale,
-      y: (ev.clientY - r.top - view.oy) / view.scale
+      x: (ev.clientX - r.left) / view.scale,
+      y: (ev.clientY - r.top) / view.scale
     };
   }
 
@@ -1207,7 +1147,6 @@
     return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
   }
 
-  // P2-2：判定区与绘制区解耦——触控命中区下限 44 屏幕 px（仅极窄屏才会真正扩展）
   function hitButton(p, b, minPx) {
     minPx = minPx || 0;
     var hw = Math.max(b.w, minPx / view.scale);
@@ -1230,49 +1169,43 @@
     pointer.settled = false;
     pointer.cell = -1;
 
-    // 弹窗优先
     if (modal) { modal = null; return; }
 
-    // 五子棋弹层优先（完全覆盖，所有点击先在此消费，return 避免穿透到玩法层）
     if (gomokuOpen) {
       if (gomokuScreen === 'menu') { handleGomokuMenuInput(p); return; }
-      // 对局页
       if (hitButton(p, GOMOKU_BACK_BTN, 44)) { gomokuOpen = false; gomokuScreen = 'menu'; return; }
       if (hitButton(p, GOMOKU_RESTART_BTN, 44)) { resetGomoku(); return; }
       if (gomokuOver) return;
-      if (gomokuMode === 'pve' && gomokuTurn !== 1) return;   // 人机：等待 AI 思考
+      if (gomokuMode === 'pve' && gomokuTurn !== 1) return;
       var c = Math.round((p.x - GOMOKU_ORIGIN_X) / GS);
       var r = Math.round((p.y - GOMOKU_ORIGIN_Y) / GS);
       if (r < 0 || r >= GOMOKU_N || c < 0 || c >= GOMOKU_N) return;
-      // 容差：点击需落在交叉点附近（半格内）
       if (Math.abs(p.x - (GOMOKU_ORIGIN_X + c * GS)) > GS / 2 ||
           Math.abs(p.y - (GOMOKU_ORIGIN_Y + r * GS)) > GS / 2) return;
-      if (gomokuBoard[r][c] !== 0) return;          // 该点已有子
+      if (gomokuBoard[r][c] !== 0) return;
       gomokuBoard[r][c] = gomokuTurn;
       gomokuAfterMove(gomokuTurn);
       if (!gomokuOver) {
         if (gomokuMode === 'pve') {
           gomokuTurn = 2;
-          setTimeout(aiGomokuMove, 350);            // 下一帧让 AI 走一步
+          setTimeout(aiGomokuMove, 350);
         } else {
-          gomokuTurn = (gomokuTurn === 1) ? 2 : 1; // 双人：双方轮流出手
+          gomokuTurn = (gomokuTurn === 1) ? 2 : 1;
         }
       }
       return;
     }
 
-    // 横板平A弹层优先（完全覆盖，所有点击先在此消费，return 避免穿透到玩法层）
     if (brawlerOpen) {
       if (hitButton(p, BRAWLER_BACK_BTN, 44)) { brawlerOpen = false; return; }
       if (hitButton(p, BRAWLER_RESTART_BTN, 44)) { resetBrawler(); return; }
-      brawlerAttack();   // 否则 tap = 平A 攻击
+      brawlerAttack();
       return;
     }
 
     if (collectionOpen) {
-      if (hitRect(p, COLL_BTN)) { collectionOpen = false; return; }       // 顶部「图鉴」按钮再次点击关闭
-      if (hitRect(p, CODEX_CLOSE_BTN)) { collectionOpen = false; return; } // 弹层内「关闭」按钮
-      // 命中某张图鉴卡 → 播放该档原声（仅解锁卡可播）
+      if (hitRect(p, COLL_BTN)) { collectionOpen = false; return; }
+      if (hitRect(p, CODEX_CLOSE_BTN)) { collectionOpen = false; return; }
       var hitCard = false;
       for (var ci = 0; ci < codexRects.length; ci++) {
         if (hitRect(p, codexRects[ci].rect)) {
@@ -1282,25 +1215,32 @@
           break;
         }
       }
-      if (!hitCard) collectionOpen = false;   // 点击空白处关闭
+      if (!hitCard) collectionOpen = false;
       return;
     }
 
+    if (hitButton(p, HOME_BTN, 44)) { location.href = 'home.html'; return; }
     if (hitButton(p, SPAWN_BTN, 44)) { spawnTier1(); return; }
     if (hitButton(p, UNLOCK_BTN, 44)) { tryUnlockRow(); return; }
     if (hitButton(p, COLL_BTN, 44)) { collectionOpen = true; return; }
     if (hitButton(p, MUTE_BTN, 44)) { muted = !muted; return; }
+    if (hitButton(p, LEGEND_BTN, 44)) { legendOpen = true; return; }
+    if (hitButton(p, GOMOKU_BTN, 44)) { gomokuOpen = true; gomokuScreen = 'menu'; return; }
+    if (hitButton(p, BRAWLER_BTN, 44)) { location.href = 'action.html'; return; }   // 平A入口 → 横版12关闯关（action.html）
+    if (hitButton(p, FRIEND_BTN, 44)) {
+      if (window.GinSocial) GinSocial.open('rank');
+      else toast = { text: '社交功能加载中…', t: 1.6 };
+      return;
+    }
     if (hitButton(p, RESET_BTN, 44)) {
       if (window.confirm('确定要清空存档、重新开始吗？')) resetAll();
       return;
     }
-    if (hitButton(p, GOMOKU_BTN, 44)) { gomokuOpen = true; gomokuScreen = 'menu'; return; }
-    if (hitButton(p, BRAWLER_BTN, 44)) { location.href = 'action.html'; return; }   // 平A入口 → 横版12关闯关（action.html，银魂立绘版）
 
     var i = hitCell(p);
     if (i >= 0 && state.cells[i] > 0) {
       pointer.cell = i;
-      startPress(i);        // 仅满级单位会真正启动长按计时
+      startPress(i);
     }
   });
 
@@ -1310,10 +1250,9 @@
     var p = toLogic(ev);
     var dx = p.x - pointer.startX, dy = p.y - pointer.startY;
     if (!pointer.moved && (dx * dx + dy * dy) > 100) {
-      pointer.moved = true;   // 阈值 10px
-      cancelPress();          // 一旦拖动就取消长按，避免误结算
+      pointer.moved = true;
+      cancelPress();
     }
-    // 第1点：图鉴卡纵向滚动（仅空格区域、且未打开详情时）
     if (collectionOpen && !detailOpen) {
       var sdy = p.y - pointer.scrollLastY;
       if (Math.abs(p.y - pointer.startY) > 8) {
@@ -1334,7 +1273,7 @@
     pointer.down = false;
     var p = toLogic(ev);
 
-    if (pointer.settled) {        // 本次手势已由长按结算消费掉
+    if (pointer.settled) {
       pointer.settled = false;
       cancelPress();
       drag = null;
@@ -1344,7 +1283,6 @@
 
     if (collectionOpen || modal) { drag = null; return; }
 
-    // 仅拖拽合并：松手落在「其他同档格」才合并；落在原格或纯点击都不合并
     if (pointer.moved && drag) {
       var target = hitCell(p);
       if (target >= 0 && target !== drag.from) {
@@ -1353,8 +1291,6 @@
       drag = null;
       return;
     }
-
-    // 纯点击（未拖动）不再触发合并：合并只能通过拖拽完成
     drag = null;
   });
 
@@ -1374,8 +1310,8 @@
 
   // ---------- 7. 绘制工具 ----------
   function rr(x, y, w, h, r) {
-    if (w <= 0 || h <= 0) return false;          // 动画中尺寸可能瞬时为 0，直接跳过
-    r = Math.max(0, Math.min(r, w / 2, h / 2));  // 半径必须非负，否则 arcTo 抛 IndexSizeError
+    if (w <= 0 || h <= 0) return false;
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
     ctx.beginPath();
     ctx.moveTo(x + r, y);
     ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -1398,8 +1334,8 @@
     ctx.stroke();
   }
 
-  function text(str, x, y, size, color, align, weight) {
-    ctx.font = (weight || '600') + ' ' + size + 'px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+  function text(str, x, y, size, color, align, weight, font) {
+    ctx.font = (weight || '600') + ' ' + size + 'px ' + (font || '-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif');
     ctx.fillStyle = color;
     ctx.textAlign = align || 'left';
     ctx.textBaseline = 'middle';
@@ -1421,7 +1357,6 @@
     return 'rgb(' + r + ',' + g + ',' + b + ')';
   }
 
-  /** sRGB 相对亮度（WCAG 2.1 定义） */
   function srgbLum(hex) {
     var h = hex.replace('#', '');
     var ch = [];
@@ -1432,24 +1367,17 @@
     return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
   }
 
-  /** WCAG 对比度：(L亮 + 0.05) / (L暗 + 0.05) */
   function contrastRatio(l1, l2) {
     var hi = Math.max(l1, l2) + 0.05;
     var lo = Math.min(l1, l2) + 0.05;
     return hi / lo;
   }
 
-  /**
-   * 按底色亮度自动挑选可读性更好的文字色（白 / 近黑）。
-   * 直接取两者中对比度更高的那个 —— 对任意底色都能拿到最大值，
-   * 黄、白、金这类高亮底色会自动切成深色字，避免出现 1.6:1 这种读不清的组合。
-   */
   function contrastText(hex) {
     var L = srgbLum(hex);
     return contrastRatio(1, L) >= contrastRatio(L, srgbLum(TEXT_DARK)) ? TEXT_LIGHT : TEXT_DARK;
   }
 
-  /** 供自测断言使用：某档位单位文字与其底色的实际对比度 */
   function tierTextContrast(tier) {
     var bg = TIER_COLORS[tier - 1];
     return contrastRatio(srgbLum(contrastText(bg)), srgbLum(bg));
@@ -1476,81 +1404,122 @@
     return mm + ' 分 ' + (sec % 60) + ' 秒';
   }
 
-  // ---------- 8. 绘制 ----------
+  // ---------- 8. 绘制（银魂 anime 风格） ----------
   function drawBackground() {
+    // #0b0e14 → #141b28 渐变
     var g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#12121d');
-    g.addColorStop(0.55, '#0b0b14');
-    g.addColorStop(1, '#08080f');
+    g.addColorStop(0, '#141b28');
+    g.addColorStop(0.55, '#0e131e');
+    g.addColorStop(1, '#0b0e14');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
 
-    // 顶部柔光
-    var rg = ctx.createRadialGradient(W / 2, 40, 10, W / 2, 40, 300);
-    rg.addColorStop(0, 'rgba(243,156,18,' + (0.10 + bgPulse * 0.25) + ')');
-    rg.addColorStop(1, 'rgba(243,156,18,0)');
-    ctx.fillStyle = rg;
-    ctx.fillRect(0, 0, W, H * 0.6);
+    // 青海波（seigaiha）同心波纹，5-8% 透明度
+    drawSeigaiha();
 
-    // 第6点：底部冷光径向（蓝）
-    var bg = ctx.createRadialGradient(W / 2, H + 60, 10, W / 2, H + 60, 360);
-    bg.addColorStop(0, 'rgba(52,152,219,0.06)');
-    bg.addColorStop(1, 'rgba(52,152,219,0)');
+    // 顶部柔光
+    var rg = ctx.createRadialGradient(W * 0.28, 30, 10, W * 0.28, 30, 320);
+    rg.addColorStop(0, 'rgba(232,193,90,' + (0.10 + bgPulse * 0.22) + ')');
+    rg.addColorStop(1, 'rgba(232,193,90,0)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(0, 0, W * 0.6, H);
+
+    // 底部冷光
+    var bg = ctx.createRadialGradient(PANEL_X, H + 40, 10, PANEL_X, H + 40, 340);
+    bg.addColorStop(0, 'rgba(58,167,216,0.06)');
+    bg.addColorStop(1, 'rgba(58,167,216,0)');
     ctx.fillStyle = bg;
-    ctx.fillRect(0, H - 360, W, 360);
+    ctx.fillRect(PANEL_X - 100, H - 340, W - PANEL_X + 100, 340);
+  }
+
+  function drawSeigaiha() {
+    var R = 30;
+    var cols = Math.ceil(W / R) + 2;
+    var rows = Math.ceil(H / R) + 2;
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    ctx.strokeStyle = '#3a4a78';
+    ctx.lineWidth = 1.4;
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        var cx = c * R * 2 - R;
+        var cy = r * R * 2 - R + (c % 2 ? R : 0);
+        for (var k = 1; k <= 3; k++) {
+          ctx.beginPath();
+          ctx.arc(cx, cy, R * k * 0.5, Math.PI, 0);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawPanelBg() {
+    // 右侧控制面板
+    fillRR(PANEL_X, 0, PANEL_W, H, 0, '#141b28');
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    ctx.fillRect(PANEL_X, 0, 1, H);                 // 中线高光
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(PANEL_X + 1, 0, 1, H);
+    // 面板顶栏底色
+    fillRR(PANEL_X, 0, PANEL_W, HUD_H, 0, 'rgba(20,27,40,0.96)');
+    ctx.fillStyle = 'rgba(232,193,90,0.18)';
+    ctx.fillRect(PANEL_X, HUD_H - 1, PANEL_W, 1);  // 金色分隔线
+  }
+
+  function drawHomeButton() {
+    drawButton(HOME_BTN, '← 首页', '#2a3550', false);
   }
 
   function drawHud() {
-    fillRR(0, 0, W, HUD_H, 0, 'rgba(23,23,36,0.92)');
-    ctx.fillStyle = 'rgba(255,255,255,0.10)';     // 第6点：顶/底 1px 高光
-    ctx.fillRect(0, 0, W, 1);
-    ctx.fillStyle = 'rgba(255,255,255,0.06)';
-    ctx.fillRect(0, HUD_H - 1, W, 1);
-
-    // 金币图标（带暖金外发光）
+    // 金币图标（金色圆 + 銀 字）+ 金额 + 每秒产出
     ctx.save();
-    ctx.shadowColor = '#f1c40f';
-    ctx.shadowBlur = 6;
+    ctx.shadowColor = '#e8c15a';
+    ctx.shadowBlur = 8;
     ctx.beginPath();
-    ctx.arc(30, 27, 11, 0, Math.PI * 2);
-    ctx.fillStyle = '#f1c40f';
+    ctx.arc(PX0 + 14, 32, 13, 0, Math.PI * 2);
+    ctx.fillStyle = '#e8c15a';
     ctx.fill();
     ctx.restore();
     ctx.beginPath();
-    ctx.arc(30, 27, 7, 0, Math.PI * 2);
-    ctx.fillStyle = shade('#f1c40f', -0.18);
+    ctx.arc(PX0 + 14, 32, 9, 0, Math.PI * 2);
+    ctx.fillStyle = shade('#e8c15a', -0.18);
     ctx.fill();
+    text('銀', PX0 + 14, 32, 13, '#3a2e10', 'center', '800', SERIF);
 
-    text('金币', 48, 17, 12, '#8b8b9e');
-    text(fmt(state.coins), 48, 39, 26, '#f7d774', 'left', '700');
+    text('金币', PX0 + 36, 18, 12, '#8a93ad', 'left', '600');
+    text(fmt(state.coins), PX0 + 36, 40, 24, '#ffd23a', 'left', '800');
 
     // 每秒产出
     var cps = coinsPerSecond();
-    fillRR(COLL_BTN.x - 108, 34, 100, 24, 12, 'rgba(46,204,113,0.14)');
-    text('+' + fmt(cps) + '/秒', COLL_BTN.x - 58, 46, 13, '#5fe08f', 'center', '700');
+    fillRR(PX0 + 36, 54, 150, 18, 9, 'rgba(46,204,113,0.16)');
+    text('+' + fmt(cps) + '/秒', PX0 + 111, 63, 12, '#5fe08f', 'center', '700');
 
-    // 图鉴按钮
-    drawButton(COLL_BTN, '图鉴', '#3498db');
-
-    // 静音切换（♪ 开声 / ✕ 静音）
-    drawButton(MUTE_BTN, muted ? '✕' : '♪', muted ? '#c0392b' : '#2ecc71');
+    // 图鉴 + 音乐 按钮
+    drawButton(COLL_BTN, '图鉴', '#3aa7d8', false);
+    drawButton(MUTE_BTN, muted ? '✕' : '♪', muted ? '#c0392b' : '#2ecc71', false);
   }
 
-  function drawButton(b, label, color) {
-    var pressed = (pressedBtn === b);            // 第6点：按下态
+  function drawButton(b, label, color, primary) {
+    var pressed = (pressedBtn === b);
     var oy = pressed ? 2 : 0;
-    var r = 14;
+    var r = 12;
     fillRR(b.x, b.y + oy, b.w, b.h, r, pressed ? shade(color, -0.22) : shade(color, -0.12));
     var g = ctx.createLinearGradient(0, b.y + oy, 0, b.y + b.h - 3 + oy);
-    g.addColorStop(0, 'rgba(255,255,255,0.18)');   // 顶高光渐变
+    g.addColorStop(0, 'rgba(255,255,255,0.20)');
     g.addColorStop(1, color);
     if (rr(b.x, b.y + oy, b.w, b.h - 3, r)) { ctx.fillStyle = g; ctx.fill(); }
-    text(label, b.x + b.w / 2, b.y + b.h / 2 - 1 + oy, 17, '#ffffff', 'center', '700');
+    // 2px 深色 cel 描边
+    strokeRR(b.x, b.y + oy, b.w, b.h, r, 'rgba(11,14,20,0.85)', 2);
+    // 主按钮金色强调边框
+    if (primary) strokeRR(b.x + 1.5, b.y + oy + 1.5, b.w - 3, b.h - 3, r - 1, 'rgba(232,193,90,0.9)', 2);
+    text(label, b.x + b.w / 2, b.y + b.h / 2 - 1 + oy, 16, '#ffffff', 'center', '700');
   }
 
   function drawGrid() {
-    fillRR(GRID_X - 9, GRID_Y - 9, GRID_W + 18, GRID_H + 18, 16, 'rgba(255,255,255,0.035)');
-    fillRR(GRID_X - 9, GRID_Y - 9, GRID_W + 18, GRID_H + 18, 16, 'rgba(30,30,40,0.85)');
+    // 棋盘底板
+    fillRR(GRID_X - 10, GRID_Y - 10, GRID_W + 20, GRID_H + 20, 18, 'rgba(10,14,22,0.85)');
+    strokeRR(GRID_X - 10, GRID_Y - 10, GRID_W + 20, GRID_H + 20, 18, '#2a3550', 1.5);
 
     for (var r = 0; r < GRID_ROWS; r++) {
       for (var c = 0; c < GRID_COLS; c++) {
@@ -1558,15 +1527,21 @@
         var cx = cellCenterX(c), cy = cellCenterY(r);
         var x = cx - CELL / 2, y = cy - CELL / 2;
 
-        // 空槽位
-        fillRR(x + 3, y + 3, CELL - 6, CELL - 6, 10, 'rgba(255,255,255,0.045)');
+        // 空槽位：rounded #141b28 瓦片 + 1px #2a3550 边框 + 内阴影
+        var tx = x + 3, ty = y + 3, ts = CELL - 6;
+        fillRR(tx, ty, ts, ts, 10, '#141b28');
+        strokeRR(tx, ty, ts, ts, 10, '#2a3550', 1);
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        fillRR(tx + 2, ty + ts - 5, ts - 4, 4, 6, 'rgba(0,0,0,0.35)');
+        ctx.restore();
 
         var tier = state.cells[i];
         if (tier <= 0) continue;
 
-        // 拖拽中的源格：半透明留影
         if (drag && drag.from === i) {
-          fillRR(x + 3, y + 3, CELL - 6, CELL - 6, 10, 'rgba(255,255,255,0.10)');
+          fillRR(tx, ty, ts, ts, 10, 'rgba(255,255,255,0.12)');
           continue;
         }
 
@@ -1583,7 +1558,6 @@
       var p = a.t / a.dur;
       if (p < 1) {
         if (p < 0) p = 0;
-        // 合成弹跳：从 0.55 倍放大并轻微过冲后回落到 1.0（不会出现 0 尺寸）
         if (a.kind === 'merge') s = 0.55 + 0.45 * easeOutBack(Math.min(1, p * 1.15));
         else if (a.kind === 'spawn') s = 0.5 + 0.5 * easeOutBack(p);
         else if (a.kind === 'clear') alpha = extraAlpha * (1 - p);
@@ -1602,7 +1576,6 @@
 
     var sprite = boardImg[tier];
     if (sprite) {
-      // 立绘：带轻微呼吸（垂直 bob）与微缩放
       var bob = Math.sin(clock * 2 + i) * 1.5;
       var ms = 1 + Math.sin(clock * 1.5 + i) * 0.02;
       var ss = (CELL - 8) * s * ms;
@@ -1615,7 +1588,6 @@
       ctx.shadowColor = 'transparent';
       ctx.shadowBlur = 0;
       ctx.shadowOffsetY = 0;
-      // 第6点：内/外描边 + 顶部高光椭圆
       strokeRR(sx, sy, ss, ss, 13, 'rgba(255,255,255,0.18)', 1);
       strokeRR(sx, sy, ss, ss, 13, shade(color, 0.3), 1);
       ctx.save();
@@ -1627,13 +1599,9 @@
       ctx.restore();
       if (selected === i) {
         strokeRR(sx + 1, sy + 1, ss - 2, ss - 2, 13, '#ffffff', 3);
-        ctx.globalAlpha *= 0.35;
-        strokeRR(sx - 3, sy - 3, ss + 6, ss + 6, 15, '#ffffff', 2);
-        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
       }
-      if (tier === MAX_TIER) strokeRR(sx + 1.5, sy + 1.5, ss - 3, ss - 3, 13, '#ffe58a', 2);
+      if (tier === MAX_TIER || tier >= 13) strokeRR(sx + 1.5, sy + 1.5, ss - 3, ss - 3, 13, '#ffe58a', 2);
     } else {
-      // 兜底：代码绘制渐变色块（任何资产 404 时绝不错位/报错）
       ctx.shadowColor = 'rgba(0,0,0,0.45)';
       ctx.shadowBlur = 10;
       ctx.shadowOffsetY = 3;
@@ -1652,7 +1620,6 @@
         fillRR(px + 9, py + 8, size - 18, (size - 8) * 0.32, 8, '#ffffff');
         ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
       }
-      // 第6点：顶部 40% 高光椭圆
       ctx.save();
       ctx.globalAlpha = Math.max(0, Math.min(1, alpha)) * 0.5;
       ctx.beginPath();
@@ -1662,28 +1629,21 @@
       ctx.restore();
       if (selected === i) {
         strokeRR(px + 1, py + 1, size - 2, size - 2, 13, '#ffffff', 3);
-        ctx.globalAlpha *= 0.35;
-        strokeRR(px - 3, py - 3, size + 6, size + 6, 15, '#ffffff', 2);
-        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
       }
-      if (tier === MAX_TIER) strokeRR(px + 1.5, py + 1.5, size - 3, size - 3, 13, '#ffe58a', 2);
+      if (tier === MAX_TIER || tier >= 13) strokeRR(px + 1.5, py + 1.5, size - 3, size - 3, 13, '#ffe58a', 2);
     }
 
-    // 文字色按底色亮度自动挑选，保证对比度达标（黄/白/金底自动用深色字）
     var fg = contrastText(color);
-
     var fs = Math.max(11, Math.floor(size * 0.40));
     text(String(tier), px + size / 2, py + size / 2, fs, fg, 'center', '800');
     ctx.restore();
 
-    // 档位角标（每秒产出）
     var small = Math.max(9, Math.floor(size * 0.19));
     ctx.globalAlpha = Math.max(0, Math.min(1, alpha)) * 0.85;
     text('+' + COIN_RATE[tier - 1], px + size - 10, py + size - 12, small, fg, 'right', '700');
     ctx.globalAlpha = 1;
   }
 
-  /** 长按满级单位时的进度环（让玩家知道"再按一会儿就能结算"） */
   function drawPressRing() {
     if (press.i < 0 || state.cells[press.i] !== MAX_TIER) return;
     var p = Math.max(0, Math.min(1, press.t / LONG_PRESS_MS));
@@ -1691,7 +1651,6 @@
     var cx = cellCenterX(c), cy = cellCenterY(r);
     var rad = CELL / 2 - 4;
     ctx.save();
-    // 第6点：外环 1px 渐变
     var grd = ctx.createLinearGradient(cx - rad, cy - rad, cx + rad, cy + rad);
     grd.addColorStop(0, 'rgba(255,255,255,0.28)');
     grd.addColorStop(1, 'rgba(255,229,138,0.18)');
@@ -1717,19 +1676,18 @@
   }
 
   function drawSpawnArea() {
-    drawButton(SPAWN_BTN, '招募 +1', '#2ecc71');
+    drawButton(SPAWN_BTN, '招募 +1', '#e8c15a', true);   // 金色主按钮
     var hy = TIP_Y;
-    // 提示行就地教学，不额外占版面：长按中 > 有满级单位 > 默认
+    var tipX = (PX0 + PX1) / 2;
     if (press.i >= 0) {
-      text('长按中… 变现可得 +' + fmt(settleValue(MAX_TIER)) + ' 金币', W / 2, hy, 12, '#ffe58a', 'center', '700');
+      text('长按中… 变现可得 +' + fmt(settleValue(MAX_TIER)) + ' 金币', tipX, hy, 12, '#ffe58a', 'center', '700');
     } else if (hasMaxTierUnit()) {
-      text('满级 ' + MAX_TIER + ' 档单位：长按 0.5 秒可变现金币', W / 2, hy, 12, '#f0e2a8', 'center', '700');
+      text('满级 ' + MAX_TIER + ' 档单位：长按 0.5 秒可变现金币', tipX, hy, 12, '#f0e2a8', 'center', '700');
     } else {
-      text('免费放置 1 个 1 档单位', W / 2, hy, 12, '#6d6d83', 'center', '500');
+      text('免费放置 1 个 1 档单位', tipX, hy, 12, '#8a93ad', 'center', '500');
     }
   }
 
-  // 解锁行按钮：显示下一行价格 / 已解锁满行；金币不足置灰
   function drawUnlockButton() {
     var label, sub, color, enabled = true;
     if (GRID_ROWS >= MAX_ROWS) {
@@ -1739,16 +1697,15 @@
       label = '解锁第' + (GRID_ROWS + 1) + '行';
       sub = fmt(price) + ' 金币';
       enabled = state.coins >= price;
-      color = enabled ? '#8e44ad' : '#5c5c72';
+      color = enabled ? '#9b7bff' : '#5c5c72';
     }
-    drawButton(UNLOCK_BTN, label, color);
+    drawButton(UNLOCK_BTN, label, color, enabled);   // 紫色主按钮
     if (sub) {
       text(sub, UNLOCK_BTN.x + UNLOCK_BTN.w / 2, UNLOCK_BTN.y + UNLOCK_BTN.h - 11, 11,
            enabled ? '#e8d6ff' : '#9a9ab0', 'center', '600');
     }
   }
 
-  // 花金币解锁下一行：提升 GRID_ROWS 并重算布局，写入存档
   function tryUnlockRow() {
     if (GRID_ROWS >= MAX_ROWS) return;
     var price = ROW_UNLOCK_PRICES[GRID_ROWS + 1];
@@ -1764,7 +1721,6 @@
     toast = { text: '已解锁第 ' + GRID_ROWS + ' 行！', t: 2.0 };
   }
 
-  // 图鉴达成 10/10 的庆祝弹层：角色卡 + 光晕 + 碎片进度（音效在触发时已播放）
   function drawCelebration() {
     var t = celebration.t;
     var tier = celebration.tier;
@@ -1772,15 +1728,15 @@
     var glow = 0.5 + 0.5 * Math.sin(t * 6);
     ctx.save();
     var rg = ctx.createRadialGradient(cx, cy, 10, cx, cy, 160);
-    rg.addColorStop(0, 'rgba(247,215,116,' + (0.32 * glow) + ')');
-    rg.addColorStop(1, 'rgba(247,215,116,0)');
+    rg.addColorStop(0, 'rgba(232,193,90,' + (0.32 * glow) + ')');
+    rg.addColorStop(1, 'rgba(232,193,90,0)');
     ctx.fillStyle = rg;
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
 
     var cw = 240, ch = 210, bx = cx - cw / 2, by = cy - ch / 2;
     fillRR(bx, by, cw, ch, 20, 'rgba(20,20,34,0.96)');
-    strokeRR(bx, by, cw, ch, 20, '#f7d774', 3);
+    strokeRR(bx, by, cw, ch, 20, '#e8c15a', 3);
 
     var discR = 50;
     var sprite = codexImg[tier];
@@ -1796,11 +1752,10 @@
       ctx.restore();
       text(String(tier), cx, cy - 20, 30, contrastText(color), 'center', '800');
     }
-    text('图鉴达成！', cx, by + ch - 46, 18, '#f7d774', 'center', '800');
+    text('图鉴达成！', cx, by + ch - 46, 18, '#e8c15a', 'center', '800', SERIF);
     text(CHARACTER_NAMES[tier - 1] + ' · 碎片 ' + fragments[tier] + '/10', cx, by + ch - 22, 13, '#ffffff', 'center', '600');
   }
 
-  // 第3点：图例 2 列表格（复用于浮层；首页改为点击展开入口）
   function drawLegendPanel(x, y) {
     var rowH = 26;
     var colGap = Math.round(W / 2) - 16;
@@ -1821,49 +1776,54 @@
     }
   }
 
-  // 第3点：首页仅保留入口按钮，完整档位产出表改为点击展开
   function drawLegend() {
-    drawButton(LEGEND_BTN, '档位产出表 ▸', '#3498db');
-    text('点击查看各档产出与解锁条件（含变现门槛）', W / 2, LEGEND_BTN.y + LEGEND_BTN.h + 16, 11, '#6d6d83', 'center', '500');
+    drawButton(LEGEND_BTN, '档位产出表 ▸', '#3aa7d8', false);
   }
 
-  // 第3点：点击展开的图例浮层（全不透明遮罩）
   function drawLegendOverlay() {
     ctx.fillStyle = 'rgba(6,6,12,1)';
     ctx.fillRect(0, 0, W, H);
-    text('档位产出表', W / 2, 56, 24, '#ffffff', 'center', '800');
+    text('档位产出表', W / 2, 56, 24, '#ffffff', 'center', '800', SERIF);
     text('变现=长按满级单位换金币', W / 2, 84, 12, '#9a9ab0', 'center', '500');
     drawLegendPanel(16, 116);
-    drawButton(LEGEND_CLOSE_BTN, '关闭', '#3498db');
+    drawButton(LEGEND_CLOSE_BTN, '关闭', '#3aa7d8');
   }
 
   function drawStats() {
-    var y = STATS_Y;   // 首页统计行（控件带固定位置，不与重置按钮重叠）
-    fillRR(16, y - 14, W - 32, 26, 12, 'rgba(255,255,255,0.06)');
-    strokeRR(16, y - 14, W - 32, 26, 12, 'rgba(255,255,255,0.08)', 1);
-    var line = '已合成 ' + state.merges + ' 次   ·   最高档位 ' + state.highestTier +
-               '   ·   图鉴 ' + unlockedCardCount() + '/' + MAX_TIER;
-    if (state.settles > 0) line += '   ·   已变现 ' + state.settles + ' 次';
-    text(line, W / 2, y, 12, '#9a9ab0', 'center', '500');
+    var y = STATS_Y;
+    fillRR(STATS_BOX.x, STATS_BOX.y, STATS_BOX.w, STATS_BOX.h, 12, 'rgba(255,255,255,0.06)');
+    strokeRR(STATS_BOX.x, STATS_BOX.y, STATS_BOX.w, STATS_BOX.h, 12, 'rgba(232,193,90,0.18)', 1);
+    var line = '已合成 ' + state.merges + ' 次 · 最高档位 ' + state.highestTier +
+               ' · 图鉴 ' + unlockedCardCount() + '/' + MAX_TIER;
+    if (state.settles > 0) line += ' · 已变现 ' + state.settles + ' 次';
+    text(line, PX0 + PW / 2, y, 11, '#9a9ab0', 'center', '500');
   }
 
-  /** 当前已解锁的图鉴卡数量（第 i 张卡在 highestTier ≥ i+1 时解锁） */
   function unlockedCardCount() {
     var n = 0;
     for (var i = 0; i < MAX_TIER; i++) if (state.highestTier >= i + 1) n++;
     return n;
   }
 
-  /** 最高档位是否已解锁最后一张卡（自测用） */
   function isLastCardUnlocked() {
     return state.highestTier >= MAX_TIER;
   }
 
   function drawBottom() {
-    drawButton(RESET_BTN, '重置存档', '#c0392b');
+    drawButton(RESET_BTN, '重置存档', '#7a3b34', false);   // 暗红
     var ok = false;
     try { ok = !!localStorage.getItem(SAVE_KEY); } catch (e) {}
-    text(ok ? '自动存档已开启' : '尚无存档（首次开局）', W / 2, H - 22, 11, '#4f4f63', 'center', '500');
+    text(ok ? '自动存档已开启' : '尚无存档（首次开局）', PX0 + PW / 2, SAVE_NOTE_Y, 10, '#5c5c72', 'center', '500');
+  }
+
+  function drawGomokuBtn() {
+    drawButton(GOMOKU_BTN, '五子棋', '#d84a3b', true);
+  }
+  function drawBrawlerBtn() {
+    drawButton(BRAWLER_BTN, '平A', '#3aa7d8', true);
+  }
+  function drawFriendBtn() {
+    drawButton(FRIEND_BTN, '好友', '#3aa7d8', false);
   }
 
   function drawFloats(dt) {
@@ -1882,7 +1842,6 @@
     if (!drag) return;
     var tier = state.cells[drag.from];
     if (tier <= 0) return;
-    // 高亮可合并目标
     var hover = hitCell(drag);
     for (var r = 0; r < GRID_ROWS; r++) {
       for (var c = 0; c < GRID_COLS; c++) {
@@ -1906,7 +1865,6 @@
     ctx.restore();
   }
 
-  // 等比覆盖裁剪绘制（封面式填充卡片矩形，居中裁切多余部分）
   function drawCover(img, dx, dy, dw, dh) {
     var ir = img.width / img.height, dr = dw / dh;
     var sw, sh, sx, sy;
@@ -1916,22 +1874,21 @@
   }
 
   function drawCollection() {
-    ctx.fillStyle = 'rgba(6,6,12,1)';   // 完全不透明，避免底层按钮/文字透出叠字（第2点）
+    ctx.fillStyle = 'rgba(6,6,12,1)';
     ctx.fillRect(0, 0, W, H);
-    text('角色图鉴', W / 2, 60, 24, '#ffffff', 'center', '800');
-    text('合出对应档位即可解锁 · 点卡片查看详情 · 变现=长按满级单位换金币', W / 2, 86, 12, '#9a9ab0', 'center', '500');
+    text('角色图鉴', W / 2, 30, 24, '#ffffff', 'center', '800', SERIF);
+    text('合出对应档位即可解锁 · 点卡片查看详情 · 变现=长按满级单位换金币', W / 2, 54, 12, '#9a9ab0', 'center', '500');
 
     codexRects = [];
     var cardW = (W - 32 - 12) / 2;
-    var cardH = 118;
+    var cardH = 96;
     var gap = 12;
-    var startY = 104;
-    collectionMaxScroll = Math.max(0, (MAX_TIER / 2) * (118 + 12) - (H - 168));
+    var startY = 70;
+    collectionMaxScroll = Math.max(0, (MAX_TIER / 2) * (cardH + gap) - (H - 130));
 
-    // 第1点：卡片区裁剪，滚动不溢出
     ctx.save();
     ctx.beginPath();
-    ctx.rect(0, startY, W, H - 168);
+    ctx.rect(0, startY, W, H - 130);
     ctx.clip();
 
     for (var i = 0; i < MAX_TIER; i++) {
@@ -1955,29 +1912,27 @@
       ctx.restore();
       strokeRR(x, y, cardW, cardH, 16, TIER_COLORS[i], 2.5);
 
-      // 底部暗化保证名字可读
       if (unlocked && codexImg[tierN]) {
-        var bg2 = ctx.createLinearGradient(0, y + cardH - 34, 0, y + cardH);
+        var bg2 = ctx.createLinearGradient(0, y + cardH - 30, 0, y + cardH);
         bg2.addColorStop(0, 'rgba(0,0,0,0)');
         bg2.addColorStop(1, 'rgba(0,0,0,0.62)');
         ctx.fillStyle = bg2;
-        ctx.fillRect(x, y + cardH - 34, cardW, 34);
+        ctx.fillRect(x, y + cardH - 30, cardW, 30);
       }
 
-      // 左上角档位徽标（第6点：30→36 r=11 加描边）
-      fillRR(x + 10, y + 10, 36, 36, 11, unlocked ? TIER_COLORS[i] : 'rgba(255,255,255,0.12)');
-      strokeRR(x + 10, y + 10, 36, 36, 11, 'rgba(255,255,255,0.18)', 1);
-      text(String(i + 1), x + 28, y + 28, 16, unlocked ? contrastText(TIER_COLORS[i]) : '#6d6d83', 'center', '800');
+      fillRR(x + 10, y + 10, 32, 32, 10, unlocked ? TIER_COLORS[i] : 'rgba(255,255,255,0.12)');
+      strokeRR(x + 10, y + 10, 32, 32, 10, 'rgba(255,255,255,0.18)', 1);
+      text(String(i + 1), x + 26, y + 26, 15, unlocked ? contrastText(TIER_COLORS[i]) : '#6d6d83', 'center', '800');
 
       var name = unlocked ? CHARACTER_NAMES[i] : (isGateTier ? gateGoalText(tierN) : '未解锁');
-      text(name, x + 14, y + cardH - 16, unlocked ? 16 : 11,
+      text(name, x + 12, y + cardH - 14, unlocked ? 14 : 10,
            unlocked ? '#ffffff' : '#d8d8e6', 'left', unlocked ? '800' : '700');
       if (unlocked) {
-        text('▶ 原声', x + cardW - 12, y + cardH - 16, 11, '#9fe0ff', 'right', '700');
-        text('+' + COIN_RATE[i] + '/秒', x + 14, y + cardH - 34, 12, '#8fd8a8', 'left', '600');
-        text('碎片 ' + fragments[tierN] + '/10', x + 14, y + cardH - 52, 11, codexDone[tierN] ? '#f7d774' : '#cfcfe0', 'left', '600');
+        text('▶ 原声', x + cardW - 12, y + cardH - 14, 11, '#9fe0ff', 'right', '700');
+        text('+' + COIN_RATE[i] + '/秒', x + 12, y + cardH - 32, 11, '#8fd8a8', 'left', '600');
+        text('碎片 ' + fragments[tierN] + '/10', x + 12, y + cardH - 48, 10, codexDone[tierN] ? '#e8c15a' : '#cfcfe0', 'left', '600');
       } else if (!isGateTier) {
-        text('需要 ' + tierN + ' 档', x + 14, y + cardH - 34, 11, '#5c5c72', 'left', '600');
+        text('需要 ' + tierN + ' 档', x + 12, y + cardH - 32, 11, '#5c5c72', 'left', '600');
       }
 
       codexRects.push({ rect: { x: x, y: y, w: cardW, h: cardH }, tier: tierN });
@@ -1985,19 +1940,18 @@
 
     ctx.restore();
 
-    drawButton(CODEX_CLOSE_BTN, '关闭', '#3498db');
+    drawButton(CODEX_CLOSE_BTN, '关闭', '#3aa7d8');
     if (collectionMaxScroll > 0) {
-      text('上下滑动查看更多', W / 2, H - 30, 11, '#6d6d83', 'center', '500');
+      text('上下滑动查看更多', W / 2, H - 30, 11, '#8a93ad', 'center', '500');
     } else {
-      text('（点击任意空白处也可关闭）', W / 2, H - 30, 11, '#6d6d83', 'center', '500');
+      text('（点击任意空白处也可关闭）', W / 2, H - 30, 11, '#8a93ad', 'center', '500');
     }
   }
 
-  // 第1点：图鉴卡放大详情（全不透明遮罩，整图等比 fit 不裁切）
   function drawDetail() {
     ctx.fillStyle = 'rgba(6,6,12,1)';
     ctx.fillRect(0, 0, W, H);
-    var cx = 20, cy = 96, cw = W - 40, ch = 566;
+    var cx = 20, cy = 70, cw = W - 40, ch = 230;
     fillRR(cx, cy, cw, ch, 18, 'rgba(255,255,255,0.04)');
     var img = codexImg[detailTier];
     if (img) {
@@ -2007,11 +1961,11 @@
       var dx = cx + (cw - dw) / 2, dy = cy + (ch - dh) / 2;
       ctx.drawImage(img, dx, dy, dw, dh);
     }
-    text(CHARACTER_NAMES[detailTier - 1], cx + cw / 2, cy + 40, 22, '#ffffff', 'center', '800');
-    text('第 ' + detailTier + ' 档 · ' + CHARACTER_NAMES[detailTier - 1], cx + cw / 2, cy + 72, 13, '#9a9ab0', 'center', '500');
-    text('+' + COIN_RATE[detailTier - 1] + ' 金币/秒', cx + cw / 2, cy + 98, 16, '#8fd8a8', 'center', '700');
-    drawButton(DETAIL_VOICE_BTN, '▶ 原声', '#3498db');
-    drawButton(DETAIL_CLOSE_BTN, '关闭', '#3498db');
+    text(CHARACTER_NAMES[detailTier - 1], cx + cw / 2, cy + 30, 22, '#ffffff', 'center', '800', SERIF);
+    text('第 ' + detailTier + ' 档 · ' + CHARACTER_NAMES[detailTier - 1], cx + cw / 2, cy + 60, 13, '#9a9ab0', 'center', '500');
+    text('+' + COIN_RATE[detailTier - 1] + ' 金币/秒', cx + cw / 2, cy + 84, 16, '#8fd8a8', 'center', '700');
+    drawButton(DETAIL_VOICE_BTN, '▶ 原声', '#3aa7d8');
+    drawButton(DETAIL_CLOSE_BTN, '关闭', '#3aa7d8');
   }
 
   function drawModal() {
@@ -2019,41 +1973,45 @@
     ctx.fillRect(0, 0, W, H);
     var bw = W - 72, bh = 200, bx = 36, by = H / 2 - bh / 2;
     fillRR(bx, by, bw, bh, 18, '#1c1c2a');
-    strokeRR(bx, by, bw, bh, 18, 'rgba(243,196,15,0.7)', 2);   // 第6点：金边加粗
-    ctx.fillStyle = 'rgba(255,255,255,0.10)';                    // 第6点：顶部 2px 高光
+    strokeRR(bx, by, bw, bh, 18, 'rgba(232,193,90,0.7)', 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
     ctx.fillRect(bx, by, bw, 2);
 
-    text('离线收益已到账', W / 2, by + 40, 19, '#f7d774', 'center', '800');
+    text('离线收益已到账', W / 2, by + 40, 19, '#e8c15a', 'center', '800', SERIF);
     text('+' + fmt(modal.amount), W / 2, by + 84, 34, '#5fe08f', 'center', '800');
     text('离线 ' + fmtTime(modal.seconds) + '（8 小时封顶 · 50% 效率）',
          W / 2, by + 120, 12, '#9a9ab0', 'center', '500');
-    text('当前每秒产出 +' + fmt(modal.rate), W / 2, by + 142, 12, '#6d6d83', 'center', '500');
+    text('当前每秒产出 +' + fmt(modal.rate), W / 2, by + 142, 12, '#8a93ad', 'center', '500');
 
-    // 第6点：按钮圆角 18 + 渐变
     var btn = { x: bx + 24, y: by + bh - 60, w: bw - 48, h: 44 };
     var bg = ctx.createLinearGradient(0, btn.y, 0, btn.y + btn.h);
     bg.addColorStop(0, 'rgba(255,255,255,0.18)');
     bg.addColorStop(1, '#2ecc71');
     fillRR(btn.x, btn.y, btn.w, btn.h, 18, shade('#2ecc71', -0.12));
     if (rr(btn.x, btn.y, btn.w, btn.h - 3, 18)) { ctx.fillStyle = bg; ctx.fill(); }
+    strokeRR(btn.x, btn.y, btn.w, btn.h, 18, 'rgba(11,14,20,0.85)', 2);
     text('开始游戏', btn.x + btn.w / 2, btn.y + btn.h / 2 - 1, 17, '#ffffff', 'center', '700');
   }
 
   function drawToast() {
     if (!toast) return;
     ctx.globalAlpha = Math.min(1, toast.t * 2);
-    var w = 300, h = 36, x = (W - w) / 2, y = HUD_H + 14;
-    fillRR(x, y, w, h, 18, 'rgba(20,20,32,0.92)');
-    strokeRR(x, y, w, h, 18, 'rgba(243,196,15,0.4)', 1);   // 第6点：金边
-    text(toast.text, W / 2, y + h / 2, 13, '#ffe58a', 'center', '600');
+    // 居中于棋盘区，避开左上「返回首页」与右侧 HUD
+    var x = 110, w = BOARD_X1 - 110, h = 34, y = 6;
+    if (w > 360) { w = 360; x = 110 + (BOARD_X1 - 110 - 360) / 2; }
+    fillRR(x, y, w, h, 17, 'rgba(20,20,32,0.92)');
+    strokeRR(x, y, w, h, 17, 'rgba(232,193,90,0.4)', 1);
+    text(toast.text, x + w / 2, y + h / 2, 13, '#ffe58a', 'center', '600');
     ctx.globalAlpha = 1;
   }
 
   function render(dt) {
     ctx.clearRect(0, 0, W, H);
     drawBackground();
+    drawPanelBg();
+    drawHomeButton();
     drawHud();
-    // 屏幕震动只作用于玩法层（合并高 impact 反馈），不晃背景/HUD
+
     ctx.save();
     if (screenShake > 0) {
       var sh = screenShake * 4;
@@ -2062,27 +2020,33 @@
     drawGrid();
     drawPressRing();
     drawDragGhost();
+    ctx.restore();
+
     drawSpawnArea();
-    drawUnlockButton();                            // 解锁行按钮（始终绘制，被浮层遮罩覆盖时不可见）
-    if (!collectionOpen && !legendOpen) {   // 第2/3点：图鉴或图例浮层打开时跳过首页图例/统计/底部
+    drawUnlockButton();
+
+    if (!collectionOpen && !legendOpen && !gomokuOpen && !brawlerOpen) {
       drawLegend();
       drawStats();
+      drawGomokuBtn();
+      drawBrawlerBtn();
+      drawFriendBtn();
       drawBottom();
     }
-    drawButton(GOMOKU_BTN, '五子棋', '#e67e22');   // 首页入口（始终可见，弹层打开时被遮罩覆盖）
+
     drawParticles();
     drawFloats(dt);
     drawToast();
-    ctx.restore();
-    if (celebration) drawCelebration();            // 图鉴达成庆祝（稳定层）
+
+    if (celebration) drawCelebration();
     if (collectionOpen) drawCollection();
     if (legendOpen) drawLegendOverlay();
     if (detailOpen) drawDetail();
     if (modal) drawModal();
-    if (gomokuOpen) {                              // 五子棋弹层最后绘制，覆盖所有
+    if (gomokuOpen) {
       if (gomokuScreen === 'menu') drawGomokuMenu(); else drawGomoku();
     }
-    if (brawlerOpen) drawBrawler();               // 横板平A弹层（最后绘制，覆盖所有）
+    if (brawlerOpen) drawBrawler();
   }
 
   function drawParticles() {
@@ -2097,15 +2061,13 @@
 
   // ---------- 9. 主循环 ----------
   function update(dt) {
-    // 放置收益（每帧按真实时间结算，与原型每秒结算等价）
     var cps = coinsPerSecond();
     if (cps > 0) state.coins += cps * dt;
 
-    // 第4点：放置自动发角色
     autoSpawnTimer += dt;
     if (autoSpawnTimer >= AUTO_SPAWN_INTERVAL) { autoSpawnTimer = 0; autoSpawn(); }
 
-    updateBrawler(dt);   // 横板平A小游戏循环（brawlerOpen 为 false 时直接 return，不扰动主玩法）
+    updateBrawler(dt);
 
     for (var i = 0; i < anim.length; i++) {
       var a = anim[i];
@@ -2116,15 +2078,14 @@
     }
     if (toast) { toast.t -= dt; if (toast.t <= 0) toast = null; }
     if (bgPulse > 0) bgPulse = Math.max(0, bgPulse - dt * 1.2);
-    if (press.i >= 0) press.t += dt * 1000;   // 长按进度环
+    if (press.i >= 0) press.t += dt * 1000;
 
-    // 立绘呼吸时钟 / 合并粒子 / 屏幕震动衰减
     clock += dt;
     for (var pi = particles.length - 1; pi >= 0; pi--) {
       var pt = particles[pi];
       pt.life += dt;
       if (pt.life >= pt.dur) { particles.splice(pi, 1); continue; }
-      pt.vy += 140 * dt;            // 重力感（第6点：拖尾衰减更缓）
+      pt.vy += 140 * dt;
       pt.x += pt.vx * dt;
       pt.y += pt.vy * dt;
     }
@@ -2149,12 +2110,19 @@
   function boot() {
     resize();
     load();
-    loadGomokuRecords();   // 五子棋战绩
-    loadAssets();   // 异步预加载立绘/图鉴/原声；失败回落代码绘制
+    loadGomokuRecords();
+    loadAssets();
     if (state.cells.every(function (v) { return v === 0; }) && state.merges === 0 && state.coins === 0) {
       for (var i = 0; i < INITIAL_UNITS; i++) spawnTier1();
       toast = { text: '拖动一个单位到另一个同档单位上即可合并升档（长按满级单位可变现金币）', t: 3.2 };
     }
+    // URL 参数：mode=gomoku 自动打开五子棋菜单（home.html 跳转入口）
+    try {
+      if (location.search && location.search.indexOf('mode=gomoku') >= 0) {
+        gomokuOpen = true;
+        gomokuScreen = 'menu';
+      }
+    } catch (e) {}
     window.__gameReady = true;
     requestAnimationFrame(loop);
   }
@@ -2205,19 +2173,16 @@
       COLS: GRID_COLS, ROWS: GRID_ROWS,
       SPAWN_BTN: SPAWN_BTN, COLL_BTN: COLL_BTN, RESET_BTN: RESET_BTN
     },
-    // 逻辑坐标 -> 页面 CSS 坐标（供自动化测试派发真实指针事件）
     toClient: function (x, y) {
       var r = cv.getBoundingClientRect();
-      return { x: r.left + view.ox + x * view.scale, y: r.top + view.oy + y * view.scale };
+      return { x: r.left + x * view.scale, y: r.top + y * view.scale };
     },
-    // 银魂换皮新增钩子（供自动化验证 / 微信小游戏接入）
     coinRateMax: COIN_RATE[MAX_TIER - 1],
     assetsLoaded: function () { return { board: loadedBoard, codex: loadedCodex, audio: loadedAudio, total: 24 }; },
     isMuted: function () { return muted; },
     playVoice: playVoice,
     boardImgLoaded: function (t) { return !!boardImg[t]; },
     codexImgLoaded: function (t) { return !!codexImg[t]; },
-    // ---------- 五子棋小游戏自测钩子 ----------
     gomoku: {
       N: GOMOKU_N,
       isOpen: function () { return gomokuOpen; },
@@ -2228,7 +2193,7 @@
       open: function () { gomokuOpen = true; gomokuScreen = 'play'; resetGomoku(); return gomokuBoard; },
       close: function () { gomokuOpen = false; },
       reset: function () { resetGomoku(); },
-      place: function (r, c, who) {           // 测试用：直接落子并判胜（who:1=玩家 2=AI）
+      place: function (r, c, who) {
         if (r < 0 || r >= GOMOKU_N || c < 0 || c >= GOMOKU_N) return false;
         if (gomokuBoard[r][c] !== 0) return false;
         gomokuBoard[r][c] = who;
@@ -2237,11 +2202,10 @@
       },
       win: function (b, who) { return gomokuWin(b, who); },
       aiMove: function () { aiGomokuMove(); },
-      setTurn: function (t) { gomokuTurn = t; },   // 仅供自动化验证切换回合
+      setTurn: function (t) { gomokuTurn = t; },
       origin: function () { return { x: GOMOKU_ORIGIN_X, y: GOMOKU_ORIGIN_Y, gs: GS }; },
       buttons: { entry: GOMOKU_BTN, back: GOMOKU_BACK_BTN, restart: GOMOKU_RESTART_BTN }
     },
-    // ---------- 横板平A小游戏自测钩子 ----------
     tick: function (dt) { update(dt); },
     brawler: {
       isOpen: function () { return brawlerOpen; },
@@ -2260,8 +2224,12 @@
     }
   };
 
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', function () { setTimeout(resize, 120); });
+
   boot();
 })();
 </script>
+<script src="assets/js/social.js" defer></script>
 </body>
 </html>

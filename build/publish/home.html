@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b0e14">
+<title>銀魂ゲーム屋 · 游戏合集</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#141b28; --line:#2a3550; --gold:#e8c15a; --gold2:#ffd23a;
+    --red:#d84a3b; --blue:#3aa7d8; --paper:#f2ead8; --dim:#8a93ad; --wood:#6b4a2b;
+    --serif:"Hiragino Mincho ProN","Yu Mincho","Noto Serif SC","STSong","SimSun",serif;
+    --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
+  }
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:#000; overflow:hidden;
+    -webkit-tap-highlight-color:transparent;
+    -webkit-user-select:none; user-select:none;
+    -webkit-touch-callout:none;
+    font-family:var(--sans);
+  }
+
+  /* ============ Logical stage: 812x375, scaled & letterboxed ============ */
+  #stage{
+    position:absolute; left:50%; top:50%;
+    width:812px; height:375px;
+    transform:translate(-50%,-50%) scale(1);
+    transform-origin:center center;
+    background:linear-gradient(180deg,#0b0e14 0%,#141b28 100%);
+    overflow:hidden;
+    box-shadow:0 0 0 1px rgba(232,193,90,.18), 0 24px 80px rgba(0,0,0,.6);
+    color:var(--paper);
+  }
+
+  /* red sun-disc accent behind the title */
+  .bg-sun{
+    position:absolute; top:-70px; left:50%; transform:translateX(-50%);
+    width:300px; height:300px; border-radius:50%;
+    background:radial-gradient(circle, rgba(216,74,59,.50) 0%, rgba(216,74,59,.18) 42%, rgba(216,74,59,0) 70%);
+    filter:blur(6px); pointer-events:none; z-index:0;
+  }
+  /* seigaiha (concentric waves) overlay, pure CSS repeating radial-gradient, ~7% opacity */
+  .bg-seigaiha{
+    position:absolute; inset:0; pointer-events:none; z-index:0; opacity:1;
+    background-image:
+      radial-gradient(circle at 50% 0,
+        transparent 0 5px, rgba(232,193,90,.085) 5px 6px,
+        transparent 6px 12px, rgba(232,193,90,.085) 12px 13px,
+        transparent 13px 19px, rgba(232,193,90,.085) 19px 20px, transparent 20px),
+      radial-gradient(circle at 50% 0,
+        transparent 0 5px, rgba(232,193,90,.085) 5px 6px,
+        transparent 6px 12px, rgba(232,193,90,.085) 12px 13px,
+        transparent 13px 19px, rgba(232,193,90,.085) 19px 20px, transparent 20px);
+    background-size:46px 23px;
+    background-position:0 0, 23px 11.5px;
+  }
+  /* drifting gold embers */
+  .embers{ position:absolute; inset:0; pointer-events:none; z-index:1; overflow:hidden; }
+  .ember{
+    position:absolute; bottom:-12px; width:5px; height:5px; border-radius:50%;
+    background:radial-gradient(circle,#ffd23a 0%,#e8c15a 55%,rgba(232,193,90,0) 100%);
+    box-shadow:0 0 8px rgba(255,210,58,.8);
+    animation:rise linear infinite;
+    opacity:0;
+  }
+  .ember.e1{ left:14%; animation-duration:9s;  animation-delay:0s;   transform:scale(.9); }
+  .ember.e2{ left:52%; animation-duration:12s; animation-delay:3s;  transform:scale(1.25); }
+  .ember.e3{ left:83%; animation-duration:10.5s; animation-delay:6s; transform:scale(.75); }
+  @keyframes rise{
+    0%   { transform:translateY(0) translateX(0) scale(var(--s,1)); opacity:0; }
+    12%  { opacity:.9; }
+    88%  { opacity:.55; }
+    100% { transform:translateY(-400px) translateX(26px) scale(var(--s,1)); opacity:0; }
+  }
+
+  /* ============ Top bar ============ */
+  .topbar{
+    position:absolute; left:0; top:0; width:100%; height:54px; z-index:6;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 18px;
+    background:linear-gradient(180deg, rgba(11,14,20,.92), rgba(11,14,20,0));
+  }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .seal{ width:34px; height:34px; filter:drop-shadow(0 0 6px rgba(232,193,90,.45)); }
+  .brand .title{
+    font-family:var(--serif); font-weight:700; font-size:22px; letter-spacing:2px;
+    color:var(--gold);
+    text-shadow:0 0 10px rgba(232,193,90,.35), 0 1px 0 #000;
+  }
+  .friend-btn{
+    font-family:var(--sans); font-size:14px; font-weight:700; letter-spacing:1px;
+    color:var(--gold); background:linear-gradient(180deg, rgba(232,193,90,.16), rgba(232,193,90,.04));
+    border:1.5px solid var(--gold); border-radius:10px;
+    padding:7px 16px; cursor:pointer;
+    box-shadow:0 2px 10px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.15);
+    transition:transform .12s ease, box-shadow .2s ease, background .2s ease;
+  }
+  .friend-btn:hover{ background:linear-gradient(180deg, rgba(232,193,90,.28), rgba(232,193,90,.08)); }
+  .friend-btn:active{ transform:translateY(1px) scale(.98); box-shadow:0 1px 4px rgba(0,0,0,.5); }
+
+  /* ============ Carousel ============ */
+  .carousel-wrap{
+    position:absolute; left:0; top:54px; width:100%; height:287px; z-index:4;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .carousel{ position:relative; width:100%; height:100%; overflow:hidden; }
+  .track{
+    position:absolute; left:0; top:50%; height:300px;
+    transform:translate(0,-50%);
+    display:flex; align-items:center;
+    transition:transform .3s cubic-bezier(.22,1,.36,1);
+    will-change:transform;
+  }
+  .card{
+    position:relative; flex:0 0 auto;
+    width:244px; height:298px; margin:0 14px;
+    border-radius:16px; overflow:hidden; cursor:pointer;
+    background:var(--panel);
+    border:2px solid #0a0d14;                 /* cel-style 2px dark outline */
+    box-shadow:0 0 0 1px rgba(232,193,90,.30), 0 10px 26px rgba(0,0,0,.5);
+    transform-origin:center center;
+    transition:transform .3s cubic-bezier(.22,1,.36,1), opacity .3s ease, filter .3s ease, box-shadow .3s ease;
+    will-change:transform,opacity,filter;
+  }
+  .card .art{
+    position:absolute; inset:0; width:100%; height:100%;
+    object-fit:cover; object-position:50% 0%;   /* top-anchored cover */
+    display:block;
+  }
+  .card .scrim{
+    position:absolute; left:0; right:0; bottom:0; height:62%;
+    background:linear-gradient(180deg, rgba(11,14,20,0) 0%, rgba(11,14,20,.55) 45%, rgba(11,14,20,.96) 100%);
+    pointer-events:none;
+  }
+  .card .info{
+    position:absolute; left:0; right:0; bottom:0; padding:12px 14px 14px;
+    text-align:center; pointer-events:none;
+  }
+  .card .name{
+    font-family:var(--serif); font-weight:800; font-size:26px; line-height:1.1;
+    color:var(--gold);
+    text-shadow:0 0 12px rgba(232,193,90,.45), 0 2px 0 #000, 0 0 2px #000;
+  }
+  .card .sub{
+    margin-top:5px; font-family:var(--sans); font-size:12px; font-weight:600;
+    color:var(--paper); opacity:.92; letter-spacing:.5px;
+    text-shadow:0 1px 2px #000;
+  }
+  /* PLAY / 参加作战 ribbon on focused enabled card */
+  .card .ribbon{
+    position:absolute; top:0; left:0; z-index:3;
+    display:none;
+    padding:6px 30px; transform:rotate(-45deg) translate(-26px,14px);
+    background:linear-gradient(180deg,#ff5d4c,var(--red));
+    color:#fff; font-family:var(--sans); font-weight:800; font-size:13px; letter-spacing:2px;
+    border:1.5px solid rgba(0,0,0,.55);
+    box-shadow:0 3px 10px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.25);
+    text-shadow:0 1px 1px rgba(0,0,0,.4);
+  }
+  .card.focused .ribbon{ display:block; }
+  .card.focused{
+    border-color:var(--gold);
+    box-shadow:0 0 0 1px var(--gold), 0 0 28px 4px rgba(232,193,90,.55), 0 14px 34px rgba(0,0,0,.55);
+  }
+  /* disabled treatment */
+  .card.disabled .art{ filter:grayscale(1) brightness(.62); }
+  .card.disabled .scrim{ height:100%; background:linear-gradient(180deg, rgba(11,14,20,.35), rgba(11,14,20,.82)); }
+  .card .lock{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-58%);
+    width:62px; height:62px; display:none; z-index:3;
+    filter:drop-shadow(0 3px 8px rgba(0,0,0,.6));
+  }
+  .card.disabled .lock{ display:block; }
+  .card .badge{
+    position:absolute; left:50%; bottom:14px; transform:translateX(-50%);
+    display:none; z-index:3;
+    padding:6px 16px; border-radius:999px;
+    background:linear-gradient(180deg, rgba(232,193,90,.22), rgba(232,193,90,.06));
+    border:1.5px solid var(--gold); color:var(--gold);
+    font-family:var(--sans); font-weight:800; font-size:13px; letter-spacing:2px;
+    box-shadow:0 2px 10px rgba(0,0,0,.45);
+  }
+  .card.disabled .badge{ display:block; }
+  @keyframes shake{
+    0%,100%{ transform:translateX(0) scale(.82); }
+    20%{ transform:translateX(-9px) scale(.82) rotate(-1.5deg); }
+    40%{ transform:translateX(9px) scale(.82) rotate(1.5deg); }
+    60%{ transform:translateX(-6px) scale(.82) rotate(-1deg); }
+    80%{ transform:translateX(6px) scale(.82) rotate(1deg); }
+  }
+  .card.shake{ animation:shake .45s ease; }
+
+  /* nav arrows */
+  .nav-arrow{
+    position:absolute; top:50%; transform:translateY(-50%); z-index:7;
+    width:46px; height:46px; border-radius:50%;
+    background:linear-gradient(180deg, rgba(20,27,40,.95), rgba(11,14,20,.95));
+    border:1.5px solid rgba(232,193,90,.45); color:var(--gold);
+    font-size:26px; line-height:1; cursor:pointer;
+    box-shadow:0 4px 14px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.12);
+    transition:transform .12s ease, box-shadow .2s ease, opacity .2s ease;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .nav-arrow:hover{ box-shadow:0 0 16px rgba(232,193,90,.5); }
+  .nav-arrow:active{ transform:translateY(-50%) scale(.92); }
+  .nav-arrow.left{ left:10px; }
+  .nav-arrow.right{ right:10px; }
+  .nav-arrow[disabled]{ opacity:.28; cursor:default; }
+
+  /* bottom hint */
+  .hint{
+    position:absolute; left:0; right:0; bottom:12px; z-index:6; text-align:center;
+    font-family:var(--sans); font-size:13px; font-weight:600; letter-spacing:1px;
+    color:var(--dim); text-shadow:0 1px 2px #000;
+  }
+  .hint b{ color:var(--gold); font-weight:800; }
+
+  /* toast */
+  .toast{
+    position:absolute; left:50%; top:62%; transform:translateX(-50%);
+    z-index:9; padding:10px 22px; border-radius:12px;
+    background:linear-gradient(180deg, rgba(20,27,40,.96), rgba(11,14,20,.96));
+    border:1.5px solid var(--gold); color:var(--gold);
+    font-family:var(--sans); font-weight:800; font-size:15px; letter-spacing:2px;
+    box-shadow:0 8px 24px rgba(0,0,0,.55);
+    opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s ease;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(-6px); }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <div class="bg-sun"></div>
+    <div class="bg-seigaiha"></div>
+    <div class="embers">
+      <span class="ember e1"></span>
+      <span class="ember e2"></span>
+      <span class="ember e3"></span>
+    </div>
+
+    <header class="topbar">
+      <div class="brand">
+        <svg class="seal" viewBox="0 0 40 40" aria-hidden="true">
+          <rect x="3" y="3" width="34" height="34" rx="9" fill="none" stroke="#e8c15a" stroke-width="2.6"/>
+          <rect x="8.5" y="8.5" width="23" height="23" rx="6" fill="none" stroke="#ffd23a" stroke-width="1"/>
+          <text x="20" y="27" text-anchor="middle" font-size="19" fill="#e8c15a"
+                font-family="'Hiragino Mincho ProN','Yu Mincho','Noto Serif SC','STSong','SimSun',serif">銀</text>
+        </svg>
+        <span class="title">銀魂ゲーム屋</span>
+      </div>
+      <button class="friend-btn" id="friendBtn" type="button">好友</button>
+    </header>
+
+    <main class="carousel-wrap">
+      <button class="nav-arrow left" id="prevBtn" type="button" aria-label="上一个">‹</button>
+      <div class="carousel">
+        <div class="track" id="track"></div>
+      </div>
+      <button class="nav-arrow right" id="nextBtn" type="button" aria-label="下一个">›</button>
+    </main>
+
+    <div class="hint">← → 选择 · 点击进入</div>
+    <div class="toast" id="toast">敬请期待</div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- 5 game modes; only files 01–12 referenced ----
+  var MODES = [
+    { name:'放置合成', sub:'合并升级 · 挂机赚钱', href:'index.html',
+      img:'assets/codex/01_坂田银时.png', enabled:true },
+    { name:'横板平A', sub:'12关横版闯关', href:'action.html',
+      img:'assets/codex/06_土方十四郎.png', enabled:true },
+    { name:'五子棋', sub:'人机/双人对弈', href:'index.html?mode=gomoku',
+      img:'assets/codex/04_定春.png', enabled:true },
+    { name:'消消乐', sub:'三消对战', href:'',
+      img:'assets/codex/03_神乐.png', enabled:false },
+    { name:'抽卡', sub:'召唤你的武士', href:'',
+      img:'assets/codex/12_虚_吉田松阳.png', enabled:false }
+  ];
+
+  var STAGE_W = 812, CARD_W = 244, GAP = 28;   // margin 14 each side → step 28
+  var track = document.getElementById('track');
+  var prevBtn = document.getElementById('prevBtn');
+  var nextBtn = document.getElementById('nextBtn');
+  var toastEl = document.getElementById('toast');
+  var friendBtn = document.getElementById('friendBtn');
+
+  var cards = [];
+  var focus = 0;
+  var toastTimer = null;
+
+  // ---- build cards ----
+  MODES.forEach(function (m, i) {
+    var card = document.createElement('div');
+    card.className = 'card' + (m.enabled ? '' : ' disabled');
+
+    var img = document.createElement('img');
+    img.className = 'art';
+    img.src = m.img;
+    img.alt = m.name;
+    img.draggable = false;
+    card.appendChild(img);
+
+    var scrim = document.createElement('div');
+    scrim.className = 'scrim';
+    card.appendChild(scrim);
+
+    // PLAY / 参加作战 ribbon
+    var ribbon = document.createElement('div');
+    ribbon.className = 'ribbon';
+    ribbon.textContent = 'PLAY';
+    card.appendChild(ribbon);
+
+    // lock icon (CSS/SVG padlock)
+    var lock = document.createElement('div');
+    lock.className = 'lock';
+    lock.innerHTML =
+      '<svg viewBox="0 0 48 48" width="62" height="62" aria-hidden="true">' +
+      '<rect x="11" y="21" width="26" height="20" rx="4" fill="#141b28" stroke="#e8c15a" stroke-width="2.5"/>' +
+      '<path d="M16 21 v-5 a8 8 0 0 1 16 0 v5" fill="none" stroke="#e8c15a" stroke-width="2.5"/>' +
+      '<circle cx="24" cy="30" r="3.4" fill="#ffd23a"/>' +
+      '<rect x="22.6" y="31" width="2.8" height="7" rx="1.4" fill="#ffd23a"/>' +
+      '</svg>';
+    card.appendChild(lock);
+
+    // info
+    var info = document.createElement('div');
+    info.className = 'info';
+    var name = document.createElement('div');
+    name.className = 'name'; name.textContent = m.name;
+    var sub = document.createElement('div');
+    sub.className = 'sub'; sub.textContent = m.sub;
+    info.appendChild(name); info.appendChild(sub);
+    card.appendChild(info);
+
+    // badge
+    var badge = document.createElement('div');
+    badge.className = 'badge'; badge.textContent = '敬请期待';
+    card.appendChild(badge);
+
+    card.addEventListener('click', function () {
+      if (moved) return;                 // ignore click that ended a drag
+      if (i === focus) {
+        if (m.enabled) { location.href = m.href; }
+        else { shake(card); showToast('敬请期待'); }
+      } else {
+        setFocus(i);
+      }
+    });
+
+    track.appendChild(card);
+    cards.push(card);
+  });
+
+  function shake(card) {
+    card.classList.remove('shake');
+    void card.offsetWidth;               // reflow to restart animation
+    card.classList.add('shake');
+    setTimeout(function () { card.classList.remove('shake'); }, 480);
+  }
+  function showToast(text) {
+    toastEl.textContent = text;
+    toastEl.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1600);
+  }
+
+  function setFocus(i) {
+    focus = Math.max(0, Math.min(MODES.length - 1, i));
+    render();
+  }
+  function render() {
+    var step = CARD_W + GAP;
+    var tx = (STAGE_W / 2) - (focus * step + CARD_W / 2);
+    track.style.transform = 'translate(' + tx + 'px,-50%)';
+    cards.forEach(function (card, i) {
+      var d = Math.abs(i - focus);
+      if (i === focus) {
+        card.style.transform = 'scale(1)';
+        card.style.opacity = '1';
+        card.style.filter = 'none';
+        card.style.zIndex = '10';
+        card.classList.add('focused');
+      } else {
+        var sc = d >= 2 ? 0.7 : 0.82;
+        card.style.transform = 'scale(' + sc + ')';
+        card.style.opacity = d >= 2 ? '0.30' : '0.45';   // darkened ~55%
+        card.style.filter = 'blur(2px) brightness(0.7)';
+        card.style.zIndex = String(10 - d);
+        card.classList.remove('focused');
+      }
+    });
+    prevBtn.disabled = focus === 0;
+    nextBtn.disabled = focus === MODES.length - 1;
+  }
+
+  // ---- navigation: arrows / keyboard / wheel / drag ----
+  prevBtn.addEventListener('click', function () { setFocus(focus - 1); });
+  nextBtn.addEventListener('click', function () { setFocus(focus + 1); });
+
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowLeft') { setFocus(focus - 1); }
+    else if (e.key === 'ArrowRight') { setFocus(focus + 1); }
+    else if (e.key === 'Enter' || e.key === ' ') {
+      var m = MODES[focus];
+      if (m.enabled) location.href = m.href; else showToast('敬请期待');
+    }
+  });
+
+  var wrap = document.querySelector('.carousel-wrap');
+  var dragX = 0, dragging = false, moved = false;
+  wrap.addEventListener('pointerdown', function (e) {
+    dragging = true; moved = false; dragX = e.clientX;
+  });
+  window.addEventListener('pointermove', function (e) {
+    if (!dragging) return;
+    if (Math.abs(e.clientX - dragX) > 8) moved = true;
+  });
+  window.addEventListener('pointerup', function (e) {
+    if (!dragging) return;
+    dragging = false;
+    if (moved) {
+      var dx = e.clientX - dragX;
+      if (dx > 30 && focus > 0) setFocus(focus - 1);
+      else if (dx < -30 && focus < MODES.length - 1) setFocus(focus + 1);
+    }
+  });
+  window.addEventListener('pointercancel', function () { dragging = false; });
+
+  wrap.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    if (e.deltaY > 0) setFocus(focus + 1);
+    else if (e.deltaY < 0) setFocus(focus - 1);
+  }, { passive: false });
+
+  // ---- 好友 button: guarded call into social.js (loaded with defer) ----
+  friendBtn.addEventListener('click', function () {
+    if (typeof GinSocial !== 'undefined' && GinSocial && typeof GinSocial.open === 'function') {
+      GinSocial.open('rank');
+    }
+  });
+
+  // ---- fit stage to viewport (letterbox) ----
+  var stage = document.getElementById('stage');
+  function fit() {
+    var s = Math.min(window.innerWidth / STAGE_W, window.innerHeight / 375);
+    if (!isFinite(s) || s <= 0) s = 1;
+    stage.style.transform = 'translate(-50%,-50%) scale(' + s + ')';
+  }
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', function () { setTimeout(fit, 120); });
+
+  fit();
+  render();
+})();
+</script>
+<script src="assets/js/social.js" defer></script>
+</body>
+</html>

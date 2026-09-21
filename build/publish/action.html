@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0b0b12">
+<meta name="theme-color" content="#0b0e14">
 <title>平A闯关 · 银魂武士</title>
 <style>
   html, body {
     margin: 0; padding: 0; width: 100%; height: 100%;
-    background: #05050a; overflow: hidden;
+    background: #000; overflow: hidden;
     -webkit-tap-highlight-color: transparent;
     -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none;
@@ -38,10 +38,22 @@
    * 通关奖励会写入该存档的 coins 字段，从而带入主游戏。
    * ========================================================================= */
 
-  var W = 375, H = 812;
+  // 逻辑舞台固定为横屏 812×375；缩放器按 min(vw/W, vh/H) 居中，黑边 letterbox。
+  var W = 812, H = 375;
   var SAVE_KEY = 'merge_samurai_save_v1';
   var PROGRESS_KEY = 'merge_samurai_action_progress_v1';
   var LEVELS = 12;
+
+  // ---------- 银魂 premium 调色板 / 字体 ----------
+  var PAL = {
+    bg: '#0b0e14', panel: '#141b28', line: '#2a3550',
+    gold: '#e8c15a', gold2: '#ffd23a', red: '#d84a3b', blue: '#3aa7d8',
+    paper: '#f2ead8', dim: '#8a93ad', wood: '#6b4a2b'
+  };
+  var SANS = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif';
+  var SERIF = '"Hiragino Mincho ProN","Yu Mincho","Noto Serif SC","STSong","SimSun",serif';
+  var activeBtn = null;       // 当前按下的按钮（用于按下态）
+  var seigaihaPat = null;     // 青海波底纹（懒加载）
 
   // ---------- 银魂角色立绘（assets/board/tier1..12.png；加载失败自动回落代码绘制） ----------
   var CHARACTER_NAMES = ['坂田银时', '志村新八', '神乐', '定春', '近藤勋', '土方十四郎',
@@ -79,7 +91,7 @@
 
   // ---------- 布局 ----------
   var HUD_H = 72;
-  var GY = 624;                 // 地面线（角色脚底）
+  var GY = 300;                 // 地面线（角色脚底）
   var ATK_DMG = 26;             // 平A 单次伤害
   var ATK_CD = 0.30;            // 平A 冷却（秒）
   var ATK_SWING = 0.18;         // 挥击动画时长
@@ -113,23 +125,27 @@
   var input = { left: false, right: false, jump: false };
   var pointers = {};            // pointerId -> action
 
-  var BTN_LEFT  = { x: 20,  y: 704, w: 72, h: 74 };
-  var BTN_RIGHT = { x: 100, y: 704, w: 72, h: 74 };
-  var BTN_JUMP  = { x: 20,  y: 620, w: 72, h: 74 };
-  var BTN_ATK   = { x: W - 96, y: 648, w: 80, h: 80 };
-  var PLAY_MENU = { x: 14,  y: 14,  w: 66, h: 40 };
+  // 屏幕内控制（横屏底部，全部位于地面线 GY=300 之下，避免遮挡角色）
+  var BTN_LEFT  = { x: 12,  y: 316, w: 54, h: 54 };
+  var BTN_RIGHT = { x: 72,  y: 316, w: 54, h: 54 };
+  var BTN_JUMP  = { x: 132, y: 316, w: 54, h: 54 };
+  var BTN_ATK   = { x: W - 78, y: 308, w: 64, h: 64 };
+  var PLAY_MENU = { x: 14,  y: 14,  w: 70, h: 40 };
 
-  var MENU_PLAY = { x: W / 2 - 100, y: 430, w: 200, h: 62 };
-  var MENU_BACK = { x: W / 2 - 100, y: 512, w: 200, h: 54 };
-  var SEL_BACK  = { x: W / 2 - 100, y: H - 92, w: 200, h: 54 };
-  var WIN_NEXT  = { x: W / 2 - 152, y: 520, w: 144, h: 62 };
-  var WIN_REPLAY= { x: W / 2 + 8,  y: 520, w: 144, h: 62 };
-  var WIN_BACK  = { x: W / 2 - 100, y: 604, w: 200, h: 54 };
-  var LOSE_RETRY= { x: W / 2 - 152, y: 520, w: 144, h: 62 };
-  var LOSE_BACK = { x: W / 2 + 8,  y: 520, w: 144, h: 62 };
+  var MENU_PLAY = { x: W / 2 - 110, y: 232, w: 220, h: 58 };
+  var MENU_BACK = { x: W / 2 - 110, y: 304, w: 220, h: 50 };
+  var SEL_BACK  = { x: W / 2 - 110, y: H - 54, w: 220, h: 46 };
+  var WIN_NEXT  = { x: W / 2 - 234, y: 324, w: 150, h: 46 };
+  var WIN_REPLAY= { x: W / 2 - 72,  y: 324, w: 150, h: 46 };
+  var WIN_BACK  = { x: W / 2 + 90,  y: 324, w: 150, h: 46 };
+  var WIN_REPLAY2 = { x: W / 2 - 160, y: 324, w: 150, h: 46 };
+  var WIN_BACK2   = { x: W / 2 + 10,  y: 324, w: 150, h: 46 };
+  var LOSE_RETRY= { x: W / 2 - 160, y: 300, w: 150, h: 46 };
+  var LOSE_BACK = { x: W / 2 + 10,  y: 300, w: 150, h: 46 };
 
   function levelBtnRect(i) {
-    var cols = 3, cw = 96, ch = 96, gx = 18, gy = 158, gap = 12;
+    // 横屏 6 列 × 2 行，金边卡片
+    var cols = 6, cw = 92, ch = 84, gx = 110, gy = 120, gap = 10;
     var c = i % cols, r = Math.floor(i / cols);
     return { x: gx + c * (cw + gap), y: gy + r * (ch + gap), w: cw, h: ch };
   }
@@ -413,17 +429,14 @@
     var sa = readSafeArea();
     var availW = Math.max(1, vw - sa.left - sa.right);
     var availH = Math.max(1, vh - sa.top - sa.bottom);
-    var pad = 12;
-    var scale = Math.min((availW - pad * 2) / W, (availH - pad * 2) / H);
+    // 横屏稳健缩放：scale = min(availW/W, availH/H)，居中，黑边由 body(#000) 充当 letterbox
+    var scale = Math.min(availW / W, availH / H);
     if (!isFinite(scale) || scale <= 0) scale = 1;
     view.scale = scale;
     view.ox = sa.left + (availW - W * scale) / 2;
     view.oy = sa.top + (availH - H * scale) / 2;
     view.dpr = dpr;
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * view.ox, dpr * view.oy);
-    var landscape = vw > vh && Math.min(vw, vh) < 600;
-    var rot = document.getElementById('rot');
-    if (rot) rot.classList.toggle('show', landscape);
   }
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', function () { setTimeout(resize, 120); });
@@ -453,8 +466,17 @@
   }
   function fillRR(x, y, w, h, r, color) { if (!rr(x, y, w, h, r)) return; ctx.fillStyle = color; ctx.fill(); }
   function strokeRR(x, y, w, h, r, color, lw) { if (!rr(x, y, w, h, r)) return; ctx.strokeStyle = color; ctx.lineWidth = lw || 2; ctx.stroke(); }
-  function text(str, x, y, size, color, align, weight) {
-    ctx.font = (weight || '600') + ' ' + size + 'px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+  function text(str, x, y, size, color, align, weight, family) {
+    ctx.font = (weight || '600') + ' ' + size + 'px ' + (family || SANS);
+    ctx.fillStyle = color; ctx.textAlign = align || 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(str, x, y);
+  }
+  function serifText(str, x, y, size, color, align, weight) {
+    text(str, x, y, size, color, align, weight, SERIF);
+  }
+  // 等宽数字（tabular-nums 效果），用于分数 / 金币等数值
+  function monoText(str, x, y, size, color, align, weight) {
+    ctx.font = (weight || '700') + ' ' + size + 'px "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace';
     ctx.fillStyle = color; ctx.textAlign = align || 'left'; ctx.textBaseline = 'middle';
     ctx.fillText(str, x, y);
   }
@@ -467,38 +489,118 @@
   }
   function drawBar(x, y, w, h, ratio, color) {
     ratio = Math.max(0, Math.min(1, ratio));
-    fillRR(x, y, w, h, h / 2, 'rgba(255,255,255,0.15)');
-    fillRR(x, y, w * ratio, h, h / 2, color);
+    fillRR(x, y, w, h, h / 2, 'rgba(11,14,20,0.85)');           // 深色底背
+    var fw = w * ratio;
+    if (fw > 0) {
+      var g = ctx.createLinearGradient(0, y, 0, y + h);
+      g.addColorStop(0, shade(color, 0.28)); g.addColorStop(1, color);
+      ctx.save();
+      if (rr(x, y, fw, h, h / 2)) { ctx.clip(); ctx.fillStyle = g; ctx.fillRect(x, y, fw, h); }
+      ctx.restore();
+    }
+    strokeRR(x, y, w, h, h / 2, 'rgba(232,193,90,0.5)', 1.5);   // 金色细描边
   }
-  function drawButton(b, label, color) {
-    var r = 14;
-    fillRR(b.x, b.y, b.w, b.h, r, shade(color, -0.12));
-    var g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
-    g.addColorStop(0, 'rgba(255,255,255,0.18)');
-    g.addColorStop(1, color);
-    if (rr(b.x, b.y, b.w, b.h - 3, r)) { ctx.fillStyle = g; ctx.fill(); }
-    text(label, b.x + b.w / 2, b.y + b.h / 2 - 1, 17, '#ffffff', 'center', '700');
+  // 标题/菜单/结算按钮：金色渐变 + 2px 深色 cel 描边 + 按下态
+  function drawButton(b, label, opts) {
+    opts = opts || {};
+    var ghost = !!opts.ghost;          // 次按钮：深色面板 + 金边
+    var serif = !!opts.serif;
+    var pressed = (b === activeBtn);
+    var r = opts.r || 14;
+    var x = b.x, y = b.y + (pressed ? 2 : 0), w = b.w, h = b.h;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = pressed ? 3 : 10;
+    ctx.shadowOffsetY = pressed ? 1 : 5;
+    if (ghost) {
+      var gp = ctx.createLinearGradient(0, y, 0, y + h);
+      gp.addColorStop(0, '#1b2435'); gp.addColorStop(1, '#10161f');
+      if (rr(x, y, w, h, r)) { ctx.fillStyle = gp; ctx.fill(); }
+    } else {
+      var g = ctx.createLinearGradient(0, y, 0, y + h);
+      g.addColorStop(0, '#ffe88a'); g.addColorStop(0.5, PAL.gold); g.addColorStop(1, '#c2912f');
+      if (rr(x, y, w, h, r)) { ctx.fillStyle = g; ctx.fill(); }
+    }
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    strokeRR(x, y, w, h, r, ghost ? PAL.gold : '#5a3d1e', 2);   // 深色 cel 描边
+    if (!pressed) {                                               // 顶部高光
+      ctx.save();
+      if (rr(x + 2, y + 2, w - 4, h * 0.5, Math.max(1, r - 2))) { ctx.clip();
+        var hl = ctx.createLinearGradient(0, y, 0, y + h * 0.55);
+        hl.addColorStop(0, 'rgba(255,255,255,0.40)'); hl.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = hl; ctx.fillRect(x, y, w, h);
+      }
+      ctx.restore();
+    }
+    var tc = ghost ? PAL.paper : '#3a2a0a';
+    text(label, x + w / 2, y + h / 2 + (pressed ? 1 : -1), opts.size || 17, tc, 'center', '800', serif ? SERIF : SANS);
+    ctx.restore();
+  }
+  // 屏内操作键：深色玻璃垫 + 金边 + 彩色图标 + 按下态
+  function drawControl(b, label, accent) {
+    var pressed = (b === activeBtn);
+    var x = b.x, y = b.y + (pressed ? 2 : 0), w = b.w, h = b.h, r = 16;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = pressed ? 3 : 9; ctx.shadowOffsetY = pressed ? 1 : 4;
+    var g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, 'rgba(34,46,66,0.92)'); g.addColorStop(1, 'rgba(11,14,20,0.96)');
+    if (rr(x, y, w, h, r)) { ctx.fillStyle = g; ctx.fill(); }
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    strokeRR(x, y, w, h, r, pressed ? accent : 'rgba(232,193,90,0.7)', 2);
+    if (!pressed) {
+      ctx.save();
+      if (rr(x + 2, y + 2, w - 4, h * 0.45, r - 2)) { ctx.clip();
+        var hl = ctx.createLinearGradient(0, y, 0, y + h * 0.5);
+        hl.addColorStop(0, 'rgba(255,255,255,0.16)'); hl.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = hl; ctx.fillRect(x, y, w, h);
+      }
+      ctx.restore();
+    }
+    text(label, x + w / 2, y + h / 2 + (pressed ? 1 : 0), 17, accent, 'center', '800', SANS);
+    ctx.restore();
   }
 
   // ---------- 背景 ----------
+  // 青海波底纹 tile（金线同心扇，约 7% 不透明度铺在动作画面之后，不干扰精灵可读性）
+  function buildSeigaiha() {
+    var r = 22;
+    var tile = document.createElement('canvas');
+    tile.width = r * 2; tile.height = r;
+    var c = tile.getContext('2d');
+    c.strokeStyle = 'rgba(232,193,90,0.9)'; c.lineWidth = 2;
+    function fan(cx, cy) {
+      for (var k = 1; k <= 4; k++) {
+        c.beginPath(); c.arc(cx, cy, r * k / 4, Math.PI, 2 * Math.PI); c.stroke();  // 上半扇
+      }
+    }
+    fan(0, r); fan(r, r); fan(r * 2, r);
+    try { return ctx.createPattern(tile, 'repeat'); } catch (e) { return null; }
+  }
   function drawBackground() {
     var g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#12121d'); g.addColorStop(0.55, '#0b0b14'); g.addColorStop(1, '#08080f');
+    g.addColorStop(0, '#11161f'); g.addColorStop(0.55, PAL.bg); g.addColorStop(1, '#070a10');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    var rg = ctx.createRadialGradient(W / 2, 40, 10, W / 2, 40, 300);
-    rg.addColorStop(0, 'rgba(243,156,18,0.12)'); rg.addColorStop(1, 'rgba(243,156,18,0)');
+    if (!seigaihaPat) seigaihaPat = buildSeigaiha();
+    if (seigaihaPat) {
+      ctx.save();
+      ctx.globalAlpha = 0.07;
+      ctx.fillStyle = seigaihaPat;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
+    var rg = ctx.createRadialGradient(W / 2, 30, 10, W / 2, 30, W * 0.6);
+    rg.addColorStop(0, 'rgba(232,193,90,0.10)'); rg.addColorStop(1, 'rgba(232,193,90,0)');
     ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H * 0.6);
   }
 
   function drawGround() {
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(0, GY); ctx.lineTo(W, GY); ctx.stroke();
-    fillRR(0, GY, W, H - GY, 0, 'rgba(255,255,255,0.03)');
-    // 远处装饰竖线
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1;
-    for (var i = 0; i < 8; i++) {
-      var x = 30 + i * 48;
-      ctx.beginPath(); ctx.moveTo(x, GY); ctx.lineTo(x - 24, H); ctx.stroke();
+    fillRR(0, GY, W, H - GY, 0, 'rgba(20,27,40,0.55)');
+    strokeRR(0, GY, W, H - GY, 0, 'rgba(232,193,90,0.28)', 2);     // 金色地平线
+    ctx.strokeStyle = 'rgba(232,193,90,0.06)'; ctx.lineWidth = 1;   // 透视装饰线
+    for (var i = 0; i < 10; i++) {
+      var x = 20 + i * 80;
+      ctx.beginPath(); ctx.moveTo(x, GY); ctx.lineTo(x - 30, H); ctx.stroke();
     }
   }
 
@@ -595,36 +697,51 @@
 
   // ---------- 屏幕 ----------
   function drawTopCoins() {
-    fillRR(0, 0, W, HUD_H, 0, 'rgba(23,23,36,0.92)');
-    ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(0, 0, W, 1);
-    ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(0, HUD_H - 1, W, 1);
-    ctx.save(); ctx.shadowColor = '#f1c40f'; ctx.shadowBlur = 6;
-    ctx.beginPath(); ctx.arc(30, 27, 11, 0, Math.PI * 2); ctx.fillStyle = '#f1c40f'; ctx.fill();
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 3;
+    fillRR(0, 0, W, HUD_H, 0, PAL.panel);
     ctx.restore();
-    ctx.beginPath(); ctx.arc(30, 27, 7, 0, Math.PI * 2); ctx.fillStyle = shade('#f1c40f', -0.18); ctx.fill();
-    text('金币', 48, 17, 12, '#8b8b9e');
-    text(String(readCoins()), 48, 39, 24, '#f7d774', 'left', '700');
+    strokeRR(0, HUD_H - 1, W, 1, 0, PAL.line, 1);                  // 金色细分隔线
+    // 金币（金质圆盘 + 暗芯）
+    ctx.save(); ctx.shadowColor = PAL.gold; ctx.shadowBlur = 8;
+    var cg = ctx.createLinearGradient(20, 16, 40, 38);
+    cg.addColorStop(0, '#ffe88a'); cg.addColorStop(1, '#c2912f');
+    ctx.beginPath(); ctx.arc(30, 27, 11, 0, Math.PI * 2); ctx.fillStyle = cg; ctx.fill();
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(30, 27, 7, 0, Math.PI * 2); ctx.fillStyle = '#8a6a1f'; ctx.fill();
+    text('金币', 48, 17, 12, PAL.dim, 'left', '600');
+    monoText(String(readCoins()), 48, 40, 22, PAL.gold2, 'left', '800');
+  }
+
+  function drawLevelBadge() {
+    var bw = 120, bh = 32, bx = W - 16 - bw, by = 86;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
+    fillRR(bx, by, bw, bh, 16, PAL.panel);
+    ctx.restore();
+    strokeRR(bx, by, bw, bh, 16, PAL.gold, 2);
+    serifText('第 ' + curLevel + ' 关', bx + bw / 2, by + bh / 2 + 1, 16, PAL.gold2, 'center', '800');
   }
 
   function drawHUD() {
     drawTopCoins();
-    // 玩家 HP
-    text('HP', 130, 22, 12, '#9a9ab0');
-    drawBar(130, 32, 150, 14, player.hp / player.maxhp, '#2ecc71');
-    text(Math.max(0, Math.round(player.hp)) + '/' + player.maxhp, 205, 39, 12, '#d8ffe6', 'center', '700');
-    // 关卡 / 分数
-    text('第 ' + curLevel + ' / ' + LEVELS + ' 关', W - 16, 20, 14, '#f7d774', 'right', '700');
-    text('分数 ' + score, W - 16, 44, 13, '#f0e2a8', 'right', '700');
-    if (phase === 'boss') text('⚔ BOSS · ' + charName(bossTier()), W - 16, 62, 13, '#e74c3c', 'right', '800');
-    else text('第 ' + (wave + 1) + ' 波 · 剩 ' + (enemies.length + spawnLeft), W - 16, 62, 12, '#9a9ab0', 'right', '500');
+    // 玩家 HP（渐变填充 + 深色底背 + 金边）
+    text('HP', 134, 21, 12, PAL.dim, 'left', '600');
+    drawBar(134, 31, 150, 14, player.hp / player.maxhp, '#27c46b');
+    text(Math.max(0, Math.round(player.hp)) + '/' + player.maxhp, 209, 38, 11, '#d8ffe6', 'center', '700');
+    // 分数（等宽数字）+ 波次 / BOSS
+    monoText('分数 ' + score, W - 16, 24, 13, '#f0e2a8', 'right', '700');
+    if (phase === 'boss') monoText('⚔ BOSS · ' + charName(bossTier()), W - 16, 48, 12, '#ff6a5b', 'right', '700');
+    else monoText('第 ' + (wave + 1) + ' 波 · 剩 ' + (enemies.length + spawnLeft), W - 16, 48, 12, PAL.dim, 'right', '700');
+    drawLevelBadge();
   }
 
   function drawControls() {
-    drawButton(BTN_LEFT, '◀', '#3498db');
-    drawButton(BTN_RIGHT, '▶', '#3498db');
-    drawButton(BTN_JUMP, '⤒', '#16a085');
-    drawButton(BTN_ATK, '平A', '#e67e22');
-    drawButton(PLAY_MENU, '菜单', '#7f8c8d');
+    drawControl(BTN_LEFT, '◀', PAL.blue);
+    drawControl(BTN_RIGHT, '▶', PAL.blue);
+    drawControl(BTN_JUMP, '⤒', '#5fe08f');
+    drawControl(BTN_ATK, '平A', PAL.gold2);
+    drawControl(PLAY_MENU, '菜单', PAL.dim);
   }
 
   function drawFloats() {
@@ -658,65 +775,91 @@
   function drawMenu() {
     drawBackground();
     drawTopCoins();
-    text('平A闯关', W / 2, 220, 46, '#f7d774', 'center', '800');
-    text('银魂 · 武士横版动作', W / 2, 268, 16, '#f0e2a8', 'center', '700');
-    text('移动 ◀▶ · 跳跃 ⤒ · 平A 清怪 · 通关拿金币', W / 2, 320, 13, '#9a9ab0', 'center', '500');
-    text('已解锁 ' + unlocked + ' / ' + LEVELS + ' 关', W / 2, 350, 13, '#8fd8a8', 'center', '600');
-    drawButton(MENU_PLAY, '开始游戏', '#2ecc71');
-    drawButton(MENU_BACK, '返回主游戏', '#3498db');
-    text('金币会直接存入主游戏存档', W / 2, 590, 12, '#6d6d83', 'center', '500');
+    serifText('平 A 闯关', W / 2, 122, 44, PAL.gold2, 'center', '800');
+    text('银魂 · 武士横版动作', W / 2, 162, 16, '#f0e2a8', 'center', '700');
+    text('移动 ◀▶ · 跳跃 ⤒ · 平A 清怪 · 通关拿金币', W / 2, 206, 13, PAL.dim, 'center', '500');
+    text('已解锁 ' + unlocked + ' / ' + LEVELS + ' 关', W / 2, 234, 13, '#8fd8a8', 'center', '600');
+    drawButton(MENU_PLAY, '开始游戏', { primary: true, serif: true });
+    drawButton(MENU_BACK, '返回首页', { ghost: true, serif: true });
+    text('金币会直接存入主游戏存档', W / 2, 362, 12, '#6d6d83', 'center', '500');
   }
 
   function drawSelect() {
     drawBackground();
     drawTopCoins();
-    text('选关', W / 2, 110, 30, '#f7d774', 'center', '800');
+    serifText('选 关', W / 2, 96, 30, PAL.gold2, 'center', '800');
     for (var i = 0; i < LEVELS; i++) {
       var b = levelBtnRect(i);
       var lv = i + 1;
       var ok = lv <= unlocked;
-      fillRR(b.x, b.y, b.w, b.h, 16, ok ? 'rgba(46,204,113,0.14)' : 'rgba(255,255,255,0.05)');
-      strokeRR(b.x, b.y, b.w, b.h, 16, ok ? '#2ecc71' : 'rgba(255,255,255,0.12)', 2);
+      fillRR(b.x, b.y, b.w, b.h, 14, ok ? 'rgba(232,193,90,0.10)' : 'rgba(20,27,40,0.5)');
+      strokeRR(b.x, b.y, b.w, b.h, 14, ok ? PAL.gold : 'rgba(138,147,173,0.4)', 2);
       if (ok && spriteOK(bossTier(lv))) {          // 该关 Boss 立绘水印（预告本关对手）
         ctx.globalAlpha = 0.3;
-        drawSprite(bossTier(lv), b.x + b.w / 2, b.y + b.h - 20, 58, false);
+        drawSprite(bossTier(lv), b.x + b.w / 2, b.y + b.h - 18, 56, false);
         ctx.globalAlpha = 1;
       }
-      text(ok ? String(lv) : '🔒', b.x + b.w / 2, b.y + b.h / 2 - 8, ok ? 30 : 22, ok ? '#f7d774' : '#5c5c72', 'center', '800');
+      serifText(ok ? String(lv) : '🔒', b.x + b.w / 2, b.y + b.h / 2 - 6, ok ? 30 : 22, ok ? PAL.gold2 : '#5c5c72', 'center', '800');
       text(ok ? ('+' + levelReward(lv).total) : '未解锁', b.x + b.w / 2, b.y + b.h / 2 + 22, 11, ok ? '#8fd8a8' : '#5c5c72', 'center', '600');
     }
-    drawButton(SEL_BACK, '返回', '#3498db');
+    drawButton(SEL_BACK, '返回首页', { ghost: true, serif: true });
+  }
+
+  // 红色印章（败）点缀
+  function drawSeal(cx, cy, s) {
+    var x = cx - s / 2, y = cy - s / 2;
+    ctx.save();
+    fillRR(x, y, s, s, 6, PAL.red);
+    strokeRR(x, y, s, s, 6, PAL.gold2, 1.5);
+    serifText('敗', cx, cy + 1, s * 0.6, '#fff7e8', 'center', '800');
+    ctx.restore();
   }
 
   function drawWin() {
     drawBackground();
-    ctx.fillStyle = 'rgba(0,0,0,0.78)'; ctx.fillRect(0, 0, W, H);
-    var pw = W - 64, ph = 320, px = 32, py = 170;
-    fillRR(px, py, pw, ph, 18, '#1c1c2a');
-    strokeRR(px, py, pw, ph, 18, 'rgba(243,196,15,0.7)', 2);
-    text('第 ' + curLevel + ' 关 通关！', W / 2, py + 44, 24, '#f7d774', 'center', '800');
-    text('基础奖励  +' + lastBreak.clear, W / 2, py + 96, 15, '#ffe58a', 'center', '700');
-    text('Boss奖励  +' + lastBreak.boss, W / 2, py + 126, 15, '#ffe58a', 'center', '700');
-    text('本次共获得  +' + lastReward + ' 金币', W / 2, py + 166, 19, '#5fe08f', 'center', '800');
-    text('金币总额  ' + readCoins(), W / 2, py + 200, 15, '#f0e2a8', 'center', '700');
-    text('分数 ' + score, W / 2, py + 230, 13, '#9a9ab0', 'center', '500');
-    if (curLevel < LEVELS) drawButton(WIN_NEXT, '下一关', '#2ecc71');
-    else text('已通关全部 ' + LEVELS + ' 关！', W / 2, py + 262, 14, '#5fe08f', 'center', '800');
-    drawButton(WIN_REPLAY, '重玩本关', '#e67e22');
-    drawButton(WIN_BACK, '返回主游戏', '#3498db');
+    ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(0, 0, W, H);
+    var pw = 560, ph = 250, px = (W - pw) / 2, py = 46;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8;
+    fillRR(px, py, pw, ph, 20, PAL.panel);
+    ctx.restore();
+    strokeRR(px, py, pw, ph, 20, PAL.gold, 2);                      // 金边
+    strokeRR(px + 6, py + 6, pw - 12, ph - 12, 16, 'rgba(232,193,90,0.25)', 1);
+    serifText('通 关', px + pw / 2, py + 44, 26, PAL.gold2, 'center', '800');
+    text('第 ' + curLevel + ' 关 · 胜利', px + pw / 2, py + 74, 14, '#f0e2a8', 'center', '600');
+    text('基础奖励  +' + lastBreak.clear, px + pw / 2, py + 108, 15, '#ffe58a', 'center', '700');
+    text('Boss奖励  +' + lastBreak.boss, px + pw / 2, py + 136, 15, '#ffe58a', 'center', '700');
+    text('本次获得  +' + lastReward + ' 金币', px + pw / 2, py + 170, 18, '#5fe08f', 'center', '800');
+    text('金币总额  ' + readCoins(), px + pw / 2, py + 200, 14, '#f0e2a8', 'center', '700');
+    if (curLevel < LEVELS) text('分数 ' + score, px + pw / 2, py + 224, 13, PAL.dim, 'center', '500');
+    else serifText('已通关全部 ' + LEVELS + ' 关！', px + pw / 2, py + 224, 14, '#5fe08f', 'center', '800');
+    // 按钮
+    if (curLevel < LEVELS) {
+      drawButton(WIN_NEXT, '继续', { primary: true, serif: true });
+      drawButton(WIN_REPLAY, '重试', { ghost: true, serif: true });
+      drawButton(WIN_BACK, '返回首页', { ghost: true, serif: true });
+    } else {
+      drawButton(WIN_REPLAY2, '重试', { ghost: true, serif: true });
+      drawButton(WIN_BACK2, '返回首页', { ghost: true, serif: true });
+    }
   }
 
   function drawLose() {
     drawBackground();
-    ctx.fillStyle = 'rgba(0,0,0,0.78)'; ctx.fillRect(0, 0, W, H);
-    var pw = W - 64, ph = 200, px = 32, py = 220;
-    fillRR(px, py, pw, ph, 18, '#1c1c2a');
-    strokeRR(px, py, pw, ph, 18, 'rgba(231,76,60,0.7)', 2);
-    text('挑战失败', W / 2, py + 50, 28, '#e74c3c', 'center', '800');
-    text('再接再厉，突破第 ' + curLevel + ' 关', W / 2, py + 96, 15, '#f0e2a8', 'center', '700');
-    text('本局分数 ' + score, W / 2, py + 126, 13, '#9a9ab0', 'center', '500');
-    drawButton(LOSE_RETRY, '重试', '#e67e22');
-    drawButton(LOSE_BACK, '返回主游戏', '#3498db');
+    ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(0, 0, W, H);
+    var pw = 460, ph = 180, px = (W - pw) / 2, py = 92;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8;
+    fillRR(px, py, pw, ph, 20, PAL.panel);
+    ctx.restore();
+    strokeRR(px, py, pw, ph, 20, PAL.red, 2);                       // 红边（败）
+    strokeRR(px + 6, py + 6, pw - 12, ph - 12, 16, 'rgba(216,74,59,0.25)', 1);
+    drawSeal(px + pw - 38, py + 36, 30);                            // 红色印章
+    serifText('挑战失败', px + pw / 2, py + 50, 26, '#ff6a5b', 'center', '800');
+    text('再接再厉，突破第 ' + curLevel + ' 关', px + pw / 2, py + 92, 15, '#f0e2a8', 'center', '700');
+    text('本局分数 ' + score, px + pw / 2, py + 124, 13, PAL.dim, 'center', '500');
+    drawButton(LOSE_RETRY, '重试', { primary: true, serif: true });
+    drawButton(LOSE_BACK, '返回首页', { ghost: true, serif: true });
   }
 
   function render(dt) {
@@ -736,11 +879,11 @@
 
   // ---------- 输入处理 ----------
   function handlePlayDown(p, id) {
-    if (hitButton(p, PLAY_MENU, 40)) { screen = 'menu'; return; }
-    if (hitButton(p, BTN_LEFT, 44)) { input.left = true; pointers[id] = 'left'; return; }
-    if (hitButton(p, BTN_RIGHT, 44)) { input.right = true; pointers[id] = 'right'; return; }
-    if (hitButton(p, BTN_JUMP, 44)) { input.jump = true; pointers[id] = 'jump'; doJump(); return; }
-    if (hitButton(p, BTN_ATK, 44)) { tryAttack(); pointers[id] = 'atk'; return; }
+    if (hitButton(p, PLAY_MENU, 40)) { activeBtn = PLAY_MENU; screen = 'menu'; return; }
+    if (hitButton(p, BTN_LEFT, 44)) { input.left = true; pointers[id] = 'left'; activeBtn = BTN_LEFT; return; }
+    if (hitButton(p, BTN_RIGHT, 44)) { input.right = true; pointers[id] = 'right'; activeBtn = BTN_RIGHT; return; }
+    if (hitButton(p, BTN_JUMP, 44)) { input.jump = true; pointers[id] = 'jump'; activeBtn = BTN_JUMP; doJump(); return; }
+    if (hitButton(p, BTN_ATK, 44)) { tryAttack(); pointers[id] = 'atk'; activeBtn = BTN_ATK; return; }
     tryAttack();   // 点击战场任意处 = 平A
   }
 
@@ -749,26 +892,28 @@
     if (cv.setPointerCapture) { try { cv.setPointerCapture(ev.pointerId); } catch (e) {} }
     var p = toLogic(ev);
     if (screen === 'menu') {
-      if (hitButton(p, MENU_PLAY, 44)) screen = 'select';
-      else if (hitButton(p, MENU_BACK, 44)) location.href = 'index.html';
+      if (hitButton(p, MENU_PLAY, 44)) { activeBtn = MENU_PLAY; screen = 'select'; }
+      else if (hitButton(p, MENU_BACK, 44)) { location.href = 'home.html'; }
       return;
     }
     if (screen === 'select') {
-      if (hitButton(p, SEL_BACK, 44)) { screen = 'menu'; return; }
+      if (hitButton(p, SEL_BACK, 44)) { location.href = 'home.html'; return; }
       for (var i = 0; i < LEVELS; i++) {
-        if (lv_unlocked(i + 1) && hitButton(p, levelBtnRect(i), 40)) { startLevel(i + 1); return; }
+        if (lv_unlocked(i + 1) && hitButton(p, levelBtnRect(i), 40)) { activeBtn = levelBtnRect(i); startLevel(i + 1); return; }
       }
       return;
     }
     if (screen === 'win') {
-      if (curLevel < LEVELS && hitButton(p, WIN_NEXT, 44)) { startLevel(curLevel + 1); return; }
-      if (hitButton(p, WIN_REPLAY, 44)) { startLevel(curLevel); return; }
-      if (hitButton(p, WIN_BACK, 44)) { location.href = 'index.html'; return; }
+      if (curLevel < LEVELS && hitButton(p, WIN_NEXT, 44)) { activeBtn = WIN_NEXT; startLevel(curLevel + 1); return; }
+      if (curLevel < LEVELS && hitButton(p, WIN_REPLAY, 44)) { activeBtn = WIN_REPLAY; startLevel(curLevel); return; }
+      if (curLevel >= LEVELS && hitButton(p, WIN_REPLAY2, 44)) { activeBtn = WIN_REPLAY2; startLevel(curLevel); return; }
+      if (curLevel < LEVELS && hitButton(p, WIN_BACK, 44)) { location.href = 'home.html'; return; }
+      if (curLevel >= LEVELS && hitButton(p, WIN_BACK2, 44)) { location.href = 'home.html'; return; }
       return;
     }
     if (screen === 'lose') {
-      if (hitButton(p, LOSE_RETRY, 44)) { startLevel(curLevel); return; }
-      if (hitButton(p, LOSE_BACK, 44)) { location.href = 'index.html'; return; }
+      if (hitButton(p, LOSE_RETRY, 44)) { activeBtn = LOSE_RETRY; startLevel(curLevel); return; }
+      if (hitButton(p, LOSE_BACK, 44)) { location.href = 'home.html'; return; }
       return;
     }
     if (screen === 'playing') handlePlayDown(p, ev.pointerId);
@@ -783,8 +928,8 @@
     else if (a === 'jump') input.jump = false;
     delete pointers[id];
   }
-  cv.addEventListener('pointerup', function (ev) { ev.preventDefault(); clearPointer(ev.pointerId); });
-  cv.addEventListener('pointercancel', function () { /* per-id cleared on up */ });
+  cv.addEventListener('pointerup', function (ev) { ev.preventDefault(); activeBtn = null; clearPointer(ev.pointerId); });
+  cv.addEventListener('pointercancel', function (ev) { activeBtn = null; clearPointer(ev.pointerId); });
   cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
   window.addEventListener('keydown', function (e) {
