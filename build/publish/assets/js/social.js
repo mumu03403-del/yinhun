@@ -563,7 +563,7 @@
 
     // 关闭按钮
     var closeBtn = document.getElementById('gs-close');
-    if (closeBtn) closeBtn.addEventListener('click', close);
+    if (closeBtn) closeBtn.addEventListener('click', function () { if (window.GinAudio && GinAudio.click) GinAudio.click(); close(); });
     // 点击遮罩（非面板）关闭
     overlayEl.addEventListener('click', function (e) {
       if (e.target === overlayEl) close();
@@ -571,16 +571,17 @@
     // 标签
     var rankTab = document.getElementById('gs-tab-rank');
     var inviteTab = document.getElementById('gs-tab-invite');
-    if (rankTab) rankTab.addEventListener('click', function () { switchTab('rank'); });
-    if (inviteTab) inviteTab.addEventListener('click', function () { switchTab('invite'); });
+    if (rankTab) rankTab.addEventListener('click', function () { if (window.GinAudio && GinAudio.click) GinAudio.click(); switchTab('rank'); });
+    if (inviteTab) inviteTab.addEventListener('click', function () { if (window.GinAudio && GinAudio.click) GinAudio.click(); switchTab('invite'); });
     // 邀请按钮
     var inviteBtn = document.getElementById('gs-invite-btn');
     if (inviteBtn) inviteBtn.addEventListener('click', function () {
+      if (window.GinAudio && GinAudio.click) GinAudio.click();
       shareInvite(DEFAULT_INVITE_TITLE);
     });
     // 保存资料
     var saveBtn = document.getElementById('gs-save-profile');
-    if (saveBtn) saveBtn.addEventListener('click', saveProfile);
+    if (saveBtn) saveBtn.addEventListener('click', function () { if (window.GinAudio && GinAudio.click) GinAudio.click(); saveProfile(); });
 
     buildAvatarOptions();
 

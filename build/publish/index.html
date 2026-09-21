@@ -163,6 +163,9 @@
   // 以下几何量由 recomputeLayout() 依据当前已解锁行数（GRID_ROWS）计算
   var CELL = 62;
   var GRID_W = 0, GRID_H = 0, GRID_X = BOARD_X0, GRID_Y = REGION_TOP;
+  var LOCK_STRIP_H = 30;          // 锁定条高度（棋盘正下方）
+  var LOCK_GAP = 8;               // 棋盘与锁定条之间的间隙
+  var LOCK_STRIP = { x: 0, y: 0, w: 0, h: LOCK_STRIP_H };  // 锁定条绘制几何
 
   function cellCenterX(c) { return GRID_X + c * (CELL + GAP) + CELL / 2; }
   function cellCenterY(r) { return GRID_Y + r * (CELL + GAP) + CELL / 2; }
@@ -172,14 +175,25 @@
   // CELL 自适应：行数越多格子越小；同时受「棋盘区宽度」约束，保证 5 列居中且恒落在
   // [REGION_TOP, REGION_BOTTOM] 内，其右侧控制面板位置固定，保证 812×375 全程无重叠。
   function recomputeLayout() {
-    var rows = Math.max(1, Math.min(MAX_ROWS, GRID_ROWS));
-    var cellH = Math.floor((REGION_H - (rows - 1) * GAP) / rows);
+    // 按当前已解锁行数（GRID_ROWS）计算格子尺寸 —— 恢复大格子，棋盘清晰可读。
+    // 棋盘宽度（列数 / 单格宽度）保持不变；若仍有锁定行，则在棋盘正下方预留锁定条空间，
+    // 使棋盘在 812×375 舞台内恒不溢出，且普通解锁时棋盘尺寸/位置保持稳定（不跳动）。
+    var rows = GRID_ROWS;
+    var hasLocked = GRID_ROWS < MAX_ROWS;
+    var regionAvailH = REGION_H - (hasLocked ? (LOCK_STRIP_H + LOCK_GAP) : 0);
+    var cellH = Math.floor((regionAvailH - (rows - 1) * GAP) / rows);
     var cellW = Math.floor((REGION_W - (GRID_COLS - 1) * GAP) / GRID_COLS);
     CELL = Math.min(CELL_MAX, cellH, cellW);
     GRID_W = GRID_COLS * CELL + (GRID_COLS - 1) * GAP;
     GRID_H = rows * CELL + (rows - 1) * GAP;
     GRID_X = BOARD_X0 + (REGION_W - GRID_W) / 2;
-    GRID_Y = REGION_TOP + (REGION_H - GRID_H) / 2;
+    // 棋盘居中于「棋盘区减去锁定条」的可用高度内；锁定条绘制在其正下方。
+    GRID_Y = REGION_TOP + (regionAvailH - GRID_H) / 2;
+    // 锁定条几何（全棋盘宽，与棋盘左右对齐）
+    LOCK_STRIP.x = GRID_X;
+    LOCK_STRIP.y = REGION_TOP + regionAvailH + LOCK_GAP;
+    LOCK_STRIP.w = GRID_W;
+    LOCK_STRIP.h = LOCK_STRIP_H;
   }
   recomputeLayout();
 
@@ -190,8 +204,8 @@
   var SPAWN_BTN  = { x: PX0,      y: 96,  w: 152, h: 44 };      // 招募 +1
   var UNLOCK_BTN = { x: PX1 - 152, y: 96,  w: 152, h: 44 };     // 解锁第 N 行
   var LEGEND_BTN = { x: PX0,      y: 152, w: PW,  h: 38 };      // 档位产出表
-  var FRIEND_BTN = { x: PX0,      y: 224, w: 152, h: 46 };      // 好友
-  var RESET_BTN  = { x: PX1 - 152, y: 224, w: 152, h: 46 };     // 重置存档
+  var FRIEND_BTN = { x: PX0,      y: 224, w: 152, h: 44 };      // 好友
+  var RESET_BTN  = { x: PX1 - 152, y: 224, w: 152, h: 44 };     // 重置存档
   var TIP_Y = 84;                                              // 免费放置提示行
   var STATS_Y = 202;                                           // 首页统计行
   var STATS_BOX = { x: PX0, y: 190, w: PW, h: 26 };
@@ -201,6 +215,7 @@
   var CODEX_CLOSE_BTN = { x: W / 2 - 80, y: H - 96, w: 160, h: 48 };
 
   var LEGEND_CLOSE_BTN = { x: W / 2 - 80, y: H - 96, w: 160, h: 48 };
+  var FRIEND_CLOSE_BTN = { x: W / 2 - 80, y: H - 96, w: 160, h: 48 };
   var DETAIL_VOICE_BTN = { x: W / 2 - 70, y: H - 132, w: 140, h: 46 };
   var DETAIL_CLOSE_BTN = { x: W / 2 - 80, y: H - 72, w: 160, h: 46 };
   var LEGEND_ROW = 22;
@@ -483,6 +498,9 @@
   var legendOpen = false;
   var detailOpen = false;
   var detailTier = 0;
+  var friendOpen = false;          // 好友弹窗（canvas 绘制，正确高宽比）
+  var unlockFx = null;             // 开锁动效 { t, dur, row }
+  var unlockBtnShake = 0;          // 金币不足时「解锁」按钮抖动计时
   var collectionScrollY = 0;
   var collectionMaxScroll = 0;
   var autoSpawnTimer = 0;
@@ -791,6 +809,7 @@
   }
 
   function handleGomokuMenuInput(p) {
+    if (window.GinAudio) GinAudio.click();
     if (hitButton(p, GOMOKU_MENU_BACK, 44)) { gomokuOpen = false; return; }
     if (hitButton(p, GOMOKU_MENU_MODE_PVE, 44)) { gomokuMode = 'pve'; gomokuPName2 = '鬼'; return; }
     if (hitButton(p, GOMOKU_MENU_MODE_PVP, 44)) { gomokuMode = 'pvp'; return; }
@@ -1170,12 +1189,12 @@
     pointer.settled = false;
     pointer.cell = -1;
 
-    if (modal) { modal = null; return; }
+    if (modal) { if (window.GinAudio) GinAudio.click(); modal = null; return; }
 
     if (gomokuOpen) {
       if (gomokuScreen === 'menu') { handleGomokuMenuInput(p); return; }
-      if (hitButton(p, GOMOKU_BACK_BTN, 44)) { gomokuOpen = false; gomokuScreen = 'menu'; return; }
-      if (hitButton(p, GOMOKU_RESTART_BTN, 44)) { resetGomoku(); return; }
+      if (hitButton(p, GOMOKU_BACK_BTN, 44)) { if (window.GinAudio) GinAudio.click(); gomokuOpen = false; gomokuScreen = 'menu'; return; }
+      if (hitButton(p, GOMOKU_RESTART_BTN, 44)) { if (window.GinAudio) GinAudio.click(); resetGomoku(); return; }
       if (gomokuOver) return;
       if (gomokuMode === 'pve' && gomokuTurn !== 1) return;
       var c = Math.round((p.x - GOMOKU_ORIGIN_X) / GS);
@@ -1185,6 +1204,7 @@
           Math.abs(p.y - (GOMOKU_ORIGIN_Y + r * GS)) > GS / 2) return;
       if (gomokuBoard[r][c] !== 0) return;
       gomokuBoard[r][c] = gomokuTurn;
+      playSfx('sfx_merge'); // 落子音效（与独立 gomoku.html:243 的 gaSfx('sfx_merge') 一致）
       gomokuAfterMove(gomokuTurn);
       if (!gomokuOver) {
         if (gomokuMode === 'pve') {
@@ -1198,20 +1218,21 @@
     }
 
     if (brawlerOpen) {
-      if (hitButton(p, BRAWLER_BACK_BTN, 44)) { brawlerOpen = false; return; }
-      if (hitButton(p, BRAWLER_RESTART_BTN, 44)) { resetBrawler(); return; }
+      if (hitButton(p, BRAWLER_BACK_BTN, 44)) { if (window.GinAudio) GinAudio.click(); brawlerOpen = false; return; }
+      if (hitButton(p, BRAWLER_RESTART_BTN, 44)) { if (window.GinAudio) GinAudio.click(); resetBrawler(); return; }
+      if (window.GinAudio) GinAudio.hit(); // 平A 命中音效
       brawlerAttack();
       return;
     }
 
     if (collectionOpen) {
       if (detailOpen) {
-        if (hitRect(p, DETAIL_CLOSE_BTN)) { detailOpen = false; return; }
-        if (hitRect(p, DETAIL_VOICE_BTN)) { playVoice(detailTier); return; }
-        detailOpen = false; return;   // 点击空白处返回图鉴
+        if (hitRect(p, DETAIL_CLOSE_BTN)) { if (window.GinAudio) GinAudio.click(); detailOpen = false; return; }
+        if (hitRect(p, DETAIL_VOICE_BTN)) { if (window.GinAudio) GinAudio.click(); playVoice(detailTier); return; }
+        if (window.GinAudio) GinAudio.click(); detailOpen = false; return;   // 点击空白处返回图鉴
       }
-      if (hitRect(p, COLL_BTN)) { collectionOpen = false; return; }
-      if (hitRect(p, CODEX_CLOSE_BTN)) { collectionOpen = false; return; }
+      if (hitRect(p, COLL_BTN)) { if (window.GinAudio) GinAudio.click(); collectionOpen = false; return; }
+      if (hitRect(p, CODEX_CLOSE_BTN)) { if (window.GinAudio) GinAudio.click(); collectionOpen = false; return; }
       var hitCard = false;
       for (var ci = 0; ci < codexRects.length; ci++) {
         if (hitRect(p, codexRects[ci].rect)) {
@@ -1226,22 +1247,30 @@
     }
 
     if (legendOpen) {
-      if (hitRect(p, LEGEND_CLOSE_BTN)) { legendOpen = false; return; }
-      legendOpen = false; return;   // 点击空白处也可关闭档位表
+      if (hitRect(p, LEGEND_CLOSE_BTN)) { if (window.GinAudio) GinAudio.click(); legendOpen = false; return; }
+      if (window.GinAudio) GinAudio.click(); legendOpen = false; return;   // 点击空白处也可关闭档位表
     }
 
-    if (hitButton(p, HOME_BTN, 44)) { location.href = 'home.html'; return; }
-    if (hitButton(p, SPAWN_BTN, 44)) { spawnTier1(); return; }
-    if (hitButton(p, UNLOCK_BTN, 44)) { tryUnlockRow(); return; }
-    if (hitButton(p, COLL_BTN, 44)) { collectionOpen = true; return; }
-    if (hitButton(p, MUTE_BTN, 44)) { muted = !muted; return; }
-    if (hitButton(p, LEGEND_BTN, 44)) { legendOpen = true; return; }
+    if (friendOpen) {
+      if (hitRect(p, FRIEND_CLOSE_BTN)) { if (window.GinAudio) GinAudio.click(); friendOpen = false; return; }
+      if (window.GinAudio) GinAudio.click(); friendOpen = false; return;   // 点击空白处关闭好友弹窗
+    }
+
+    if (hitButton(p, HOME_BTN, 44)) { if (window.GinAudio) GinAudio.click(); location.href = 'home.html'; return; }
+    if (hitButton(p, SPAWN_BTN, 44)) { if (window.GinAudio) GinAudio.click(); spawnTier1(); return; }
+    if (hitButton(p, UNLOCK_BTN, 44)) { if (window.GinAudio) GinAudio.click(); tryUnlockRow(); return; }
+    if (hitButton(p, COLL_BTN, 44)) { if (window.GinAudio) GinAudio.click(); collectionOpen = true; return; }
+    if (hitButton(p, MUTE_BTN, 44)) { if (window.GinAudio) GinAudio.click(); muted = !muted; return; }
+    if (hitButton(p, LEGEND_BTN, 44)) { if (window.GinAudio) GinAudio.click(); legendOpen = true; return; }
     if (hitButton(p, FRIEND_BTN, 44)) {
+      if (window.GinAudio) GinAudio.click();
+      friendOpen = true;
       if (window.GinSocial) GinSocial.open('rank');
       else toast = { text: '社交功能加载中…', t: 1.6 };
       return;
     }
     if (hitButton(p, RESET_BTN, 44)) {
+      if (window.GinAudio) GinAudio.click();
       if (window.confirm('确定要清空存档、重新开始吗？')) resetAll();
       return;
     }
@@ -1349,6 +1378,11 @@
     ctx.textAlign = align || 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(str, x, y);
+  }
+
+  function textW(str, size, weight) {
+    ctx.font = (weight || '600') + ' ' + size + 'px ' + '-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    return ctx.measureText(str).width;
   }
 
   function shade(hex, k) {
@@ -1509,20 +1543,26 @@
     drawButton(MUTE_BTN, muted ? '✕' : '♪', muted ? '#c0392b' : '#2ecc71', false);
   }
 
-  function drawButton(b, label, color, primary) {
+  function drawButton(b, label, color, primary, dx) {
+    dx = dx || 0;
     var pressed = (pressedBtn === b);
     var oy = pressed ? 2 : 0;
     var r = 12;
-    fillRR(b.x, b.y + oy, b.w, b.h, r, pressed ? shade(color, -0.22) : shade(color, -0.12));
+    var bx = b.x + dx;
+    fillRR(bx, b.y + oy, b.w, b.h, r, pressed ? shade(color, -0.22) : shade(color, -0.12));
     var g = ctx.createLinearGradient(0, b.y + oy, 0, b.y + b.h - 3 + oy);
     g.addColorStop(0, 'rgba(255,255,255,0.20)');
     g.addColorStop(1, color);
-    if (rr(b.x, b.y + oy, b.w, b.h - 3, r)) { ctx.fillStyle = g; ctx.fill(); }
+    if (rr(bx, b.y + oy, b.w, b.h - 3, r)) { ctx.fillStyle = g; ctx.fill(); }
     // 2px 深色 cel 描边
-    strokeRR(b.x, b.y + oy, b.w, b.h, r, 'rgba(11,14,20,0.85)', 2);
+    strokeRR(bx, b.y + oy, b.w, b.h, r, 'rgba(11,14,20,0.85)', 2);
     // 主按钮金色强调边框
-    if (primary) strokeRR(b.x + 1.5, b.y + oy + 1.5, b.w - 3, b.h - 3, r - 1, 'rgba(232,193,90,0.9)', 2);
-    text(label, b.x + b.w / 2, b.y + b.h / 2 - 1 + oy, 16, '#ffffff', 'center', '700');
+    if (primary) strokeRR(bx + 1.5, b.y + oy + 1.5, b.w - 3, b.h - 3, r - 1, 'rgba(232,193,90,0.9)', 2);
+    // 主标签自适应字号，确保文字不溢出按钮
+    var maxW = b.w - 16;
+    var ls = 16;
+    while (ls > 9 && textW(label, ls, '700') > maxW) ls--;
+    text(label, bx + b.w / 2, b.y + b.h / 2 - 1 + oy, ls, '#ffffff', 'center', '700');
   }
 
   function drawGrid() {
@@ -1546,6 +1586,12 @@
         fillRR(tx + 2, ty + ts - 5, ts - 4, 4, 6, 'rgba(0,0,0,0.35)');
         ctx.restore();
 
+        // 正在播放开锁动效的那一行：暗化 + 金色描边按列依次亮起（锁图标由锁定条承载）
+        if (unlockFx && unlockFx.row === r) {
+          drawUnlockRowCell(tx, ty, ts, r, c);
+          continue;
+        }
+
         var tier = state.cells[i];
         if (tier <= 0) continue;
 
@@ -1557,6 +1603,76 @@
         drawUnit(x, y, tier, i, 1);
       }
     }
+
+    // 锁定条（棋盘正下方）：表达剩余锁定行
+    drawLockStrip();
+  }
+
+  function drawLockIcon(cx, cy, s, alpha, shake) {
+    if (alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    var ox = (shake > 0) ? Math.sin(shake * 42) * 2.4 * (1 - Math.min(1, shake)) : 0;
+    var bw = s * 0.46, bh = s * 0.34;
+    var bx = cx - bw / 2 + ox, by = cy - bh / 2 + s * 0.05;
+    // 锁体（金色描边 + 半透明填充）
+    strokeRR(bx, by, bw, bh, 4, '#e8c15a', 2);
+    if (rr(bx, by, bw, bh, 4)) { ctx.fillStyle = 'rgba(232,193,90,0.10)'; ctx.fill(); }
+    // 锁梁（弧）
+    ctx.beginPath();
+    ctx.arc(cx + ox, by, bw * 0.32, Math.PI, 0);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#e8c15a';
+    ctx.stroke();
+    // 钥匙孔
+    ctx.beginPath();
+    ctx.arc(cx + ox, by + bh * 0.46, bw * 0.08, 0, Math.PI * 2);
+    ctx.fillStyle = '#e8c15a';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawUnlockRowCell(tx, ty, ts, r, c) {
+    // 新解锁行的「按列 stagger 依次亮起金色描边」动效；不再逐格画锁（锁交给锁定条）
+    var lit = 0;
+    if (unlockFx && unlockFx.row === r) {
+      var p = Math.max(0, Math.min(1, unlockFx.t / unlockFx.dur));
+      var stagger = c / GRID_COLS;                       // 列依次亮起
+      lit = Math.max(0, Math.min(1, (p - 0.1 - stagger * 0.3) / 0.5));
+    }
+    // 半透明暗化（随亮起减弱）
+    ctx.save();
+    ctx.globalAlpha = (1 - lit * 0.9);
+    fillRR(tx, ty, ts, ts, 10, 'rgba(8,10,16,0.66)');
+    ctx.restore();
+    strokeRR(tx, ty, ts, ts, 10, 'rgba(42,53,80,0.6)', 1);
+    if (lit > 0) strokeRR(tx + 1, ty + 1, ts - 2, ts - 2, 10, 'rgba(232,193,90,' + (0.9 * lit) + ')', 1.5);
+  }
+
+  function drawLockStrip() {
+    if (GRID_ROWS >= MAX_ROWS) return;                   // 已解锁满行：无锁定条
+    var s = LOCK_STRIP;
+    fillRR(s.x, s.y, s.w, s.h, 10, '#141b28');
+    strokeRR(s.x, s.y, s.w, s.h, 10, '#e8c15a', 2);
+
+    // 金色挂锁图标：解锁成功时抖动→淡出
+    var iconAlpha = 1, iconShake = 0;
+    if (unlockFx) {
+      var p = Math.max(0, Math.min(1, unlockFx.t / unlockFx.dur));
+      if (p < 0.5) { iconShake = p; iconAlpha = 1; }
+      else { iconAlpha = Math.max(0, 1 - (p - 0.5) / 0.5); }
+    }
+    drawLockIcon(s.x + 16, s.y + s.h / 2, s.h * 0.72, iconAlpha, iconShake);
+
+    // 文案：下一个可解锁行 + 价格
+    var N = GRID_ROWS + 1;                               // 下一个可解锁行（1 基）
+    var K = MAX_ROWS - GRID_ROWS;                        // 剩余锁定行数
+    var price = ROW_UNLOCK_PRICES[N];
+    var label = (K > 1)
+      ? ('第 ' + N + '-' + MAX_ROWS + ' 行 · ' + K + ' 行待解锁')
+      : ('第 ' + N + ' 行待解锁');
+    var priceTxt = (price != null) ? (' · ' + fmt(price) + ' 金币') : '';
+    text(label + priceTxt, s.x + 34, s.y + s.h / 2, 12, '#f0e2a8', 'left', '700');
   }
 
   function drawUnit(x, y, tier, i, extraAlpha) {
@@ -1708,9 +1824,16 @@
       enabled = state.coins >= price;
       color = enabled ? '#9b7bff' : '#5c5c72';
     }
-    drawButton(UNLOCK_BTN, label, color, enabled);   // 紫色主按钮
+    // 金币不足时按钮左右抖动
+    var dx = 0;
+    if (unlockBtnShake > 0) dx = Math.sin(unlockBtnShake * 50) * 4 * (unlockBtnShake / 0.4);
+    drawButton(UNLOCK_BTN, label, color, enabled, dx);   // 紫色主按钮
     if (sub) {
-      text(sub, UNLOCK_BTN.x + UNLOCK_BTN.w / 2, UNLOCK_BTN.y + UNLOCK_BTN.h - 11, 11,
+      // 副文字（价格）自适应字号，padding 内置，确保不溢出
+      var maxW = UNLOCK_BTN.w - 14;
+      var sz = 12;
+      while (sz > 8 && textW(sub, sz, '600') > maxW) sz--;
+      text(sub, UNLOCK_BTN.x + UNLOCK_BTN.w / 2 + dx, UNLOCK_BTN.y + UNLOCK_BTN.h - 11, sz,
            enabled ? '#e8d6ff' : '#9a9ab0', 'center', '600');
     }
   }
@@ -1720,12 +1843,17 @@
     var price = ROW_UNLOCK_PRICES[GRID_ROWS + 1];
     if (price == null) return;
     if (state.coins < price) {
+      if (window.GinAudio) GinAudio.locked();   // 低沉错误音
+      unlockBtnShake = 0.4;                       // 按钮抖动反馈
       toast = { text: '金币不足，解锁第' + (GRID_ROWS + 1) + '行需 ' + fmt(price) + ' 金币', t: 2.0 };
       return;
     }
+    var newRow = GRID_ROWS;   // 即将解锁的行（0 基）
     state.coins -= price;
     GRID_ROWS++;
     recomputeLayout();
+    unlockFx = { t: 0, dur: 0.45, row: newRow };   // 锁抖动→碎裂、行依次亮起
+    if (window.GinAudio) GinAudio.unlock();
     save();
     toast = { text: '已解锁第 ' + GRID_ROWS + ' 行！', t: 2.0 };
   }
@@ -1766,22 +1894,27 @@
   }
 
   function drawLegendPanel(x, y) {
-    var rowH = 26;
-    var colGap = Math.round(W / 2) - 16;
+    var rowH = 19;
+    var cols = 3;                                  // 3 列 × 8 行，24 档全部落在金边面板内
+    var colGap = Math.floor((W - 48) / cols);      // 每列可用宽度（左右各留约 10px 内边距，避免贴金边框）
     for (var i = 0; i < MAX_TIER; i++) {
-      var col = (i < 6) ? 0 : 1;
-      var row = (i < 6) ? i : i - 6;
+      var tierN = i + 1;
+      var col = i % cols;
+      var row = Math.floor(i / cols);              // 0..7
       var lx = x + col * colGap;
       var ry = y + row * rowH;
-      var tierN = i + 1;
       var unlocked = codexCardUnlocked(tierN);
-      fillRR(lx, ry - 8, 18, 18, 6, TIER_COLORS[i]);
-      text((i + 1) + ' 档', lx + 26, ry + 1, 13, '#b9b9cc', 'left', '600');
+      // 色块圆点
+      fillRR(lx, ry - 7, 14, 14, 5, TIER_COLORS[i]);
+      strokeRR(lx, ry - 7, 14, 14, 5, 'rgba(255,255,255,0.18)', 1);
+      // 档位名 + 解锁条件（缩小字号以适配多列）
       var isGateTier = GATE_TIERS[tierN];
       var lockLabel = isGateTier ? ('锁 ' + gateShort(tierN)) : ('合出 ' + tierN + ' 档解锁');
-      text(unlocked ? CHARACTER_NAMES[i] : lockLabel,
-           lx + 64, ry + 1, isGateTier ? 11 : 12, unlocked ? '#f0e2a8' : '#5c5c72', 'left', unlocked ? '700' : '500');
-      text('+' + COIN_RATE[i] + '/秒', lx + colGap - 16, ry + 1, 12, '#8fd8a8', 'right', '600');
+      text(tierN + '·' + (unlocked ? CHARACTER_NAMES[i] : lockLabel),
+           lx + 19, ry, isGateTier ? 10 : 11, unlocked ? '#f0e2a8' : '#8a93ad', 'left',
+           unlocked ? '700' : '500');
+      // 每秒金币（本列内右对齐）
+      text('+' + COIN_RATE[i] + '/秒', lx + colGap - 10, ry, 10, '#8fd8a8', 'right', '600');
     }
   }
 
@@ -1794,11 +1927,29 @@
     ctx.fillRect(0, 0, W, H);
     text('档位产出表', W / 2, 56, 24, '#e8c15a', 'center', '800', SERIF);
     text('变现 = 长按满级单位换金币', W / 2, 84, 12, '#9a9ab0', 'center', '500');
-    var lpx = 14, lpy = 100, lpw = W - 28, lph = H - 211;   // 底部留 15px 给关闭按钮
+    var lpx = 14, lpy = 90, lpw = W - 28, lph = H - 205;   // 底部留空间给关闭按钮
     fillRR(lpx, lpy, lpw, lph, 18, 'rgba(20,20,34,0.92)');
     strokeRR(lpx, lpy, lpw, lph, 18, '#e8c15a', 2);
-    drawLegendPanel(24, 116);
+    drawLegendPanel(lpx + 10, 104);
     drawButton(LEGEND_CLOSE_BTN, '关闭', '#e8c15a');
+  }
+
+  function drawFriendOverlay() {
+    ctx.fillStyle = 'rgba(6,6,12,1)';
+    ctx.fillRect(0, 0, W, H);
+    // 合理高宽比：宽约 540 × 高约 310，在 375 高的舞台内留边
+    var pw = 540, ph = 310, px = (W - pw) / 2, py = (H - ph) / 2;
+    fillRR(px, py, pw, ph, 18, 'rgba(20,20,34,0.96)');
+    strokeRR(px, py, pw, ph, 18, '#e8c15a', 3);
+    text('好友排行 · 邀请好友', W / 2, py + 34, 22, '#e8c15a', 'center', '800', SERIF);
+    text('（H5 暂无社交数据，诚实返回空列表）', W / 2, py + 62, 12, '#9a9ab0', 'center', '500');
+    // 内部可滚动区域（当前为空列表；内容增多时面板内部滚动）
+    var listX = px + 20, listY = py + 84, listW = pw - 40, listH = ph - 84 - 64;
+    fillRR(listX, listY, listW, listH, 12, 'rgba(255,255,255,0.05)');
+    strokeRR(listX, listY, listW, listH, 12, 'rgba(232,193,90,0.18)', 1);
+    text('暂无好友', W / 2, listY + listH / 2 - 8, 16, '#8a93ad', 'center', '600');
+    text('邀请好友一起合并武士吧', W / 2, listY + listH / 2 + 16, 12, '#5c5c72', 'center', '500');
+    drawButton(FRIEND_CLOSE_BTN, '关闭', '#e8c15a');
   }
 
   function drawStats() {
@@ -1891,11 +2042,11 @@
     var cardH = 96;
     var gap = 12;
     var startY = 70;
-    collectionMaxScroll = Math.max(0, (MAX_TIER / 2) * (cardH + gap) - (H - 130));
+    collectionMaxScroll = Math.max(0, (MAX_TIER / 2) * (cardH + gap) - (H - 175));
 
     ctx.save();
     ctx.beginPath();
-    ctx.rect(0, startY, W, H - 130);
+    ctx.rect(0, startY, W, H - 175);
     ctx.clip();
 
     for (var i = 0; i < MAX_TIER; i++) {
@@ -2050,6 +2201,7 @@
     if (celebration) drawCelebration();
     if (collectionOpen) drawCollection();
     if (legendOpen) drawLegendOverlay();
+    if (friendOpen) drawFriendOverlay();
     if (detailOpen) drawDetail();
     if (modal) drawModal();
     if (gomokuOpen) {
@@ -2086,6 +2238,8 @@
       }
     }
     if (toast) { toast.t -= dt; if (toast.t <= 0) toast = null; }
+    if (unlockFx) { unlockFx.t += dt; if (unlockFx.t >= unlockFx.dur) unlockFx = null; }
+    if (unlockBtnShake > 0) unlockBtnShake = Math.max(0, unlockBtnShake - dt);
     if (bgPulse > 0) bgPulse = Math.max(0, bgPulse - dt * 1.2);
     if (press.i >= 0) press.t += dt * 1000;
 

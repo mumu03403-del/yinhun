@@ -40,8 +40,8 @@
 
   var W = 812, H = 375;
   var GRID = 8;
-  var CELL = 36;
-  var GX = 262, GY = 72;                 // 网格左上角（居中于中部区域）
+  var CELL = 39;
+  var GX = 250, GY = 58;                 // 网格左上角（加宽棋盘至 312px，紧贴两侧列）
   var HUD_H = 56;
 
   // ---------- 银魂 premium 调色板 / 字体 ----------
@@ -62,8 +62,8 @@
     'assets/codex/04_定春.png',     'assets/codex/05_近藤勋.png',  'assets/codex/06_土方十四郎.png',
     'assets/codex/07_冲田总悟.png', 'assets/codex/08_桂小太郎.png'
   ];
-  // 8 种互不相同的强调色（对应角色气质）
-  var ACCENT = ['#d9e2f0', '#6fb1e0', '#e85b5b', '#e0a85b', '#6fcf97', '#b56ad8', '#5ac8d8', '#d88f3b'];
+  // 8 种互不相同的强调色（对应角色气质；神乐橙、新八蓝等，用于棋盘描边与图鉴边框）
+  var ACCENT = ['#d9e2f0', '#3aa7d8', '#e8893b', '#e0a85b', '#6fcf97', '#b56ad8', '#5ac8d8', '#d88f3b'];
   var gemImgs = [];
   (function preloadGems() {
     for (var i = 0; i < 8; i++) {
@@ -236,6 +236,13 @@
     if (screen === 'over') return;
     screen = 'over';
     if (score > best) { best = score; writeBest(best); }
+  }
+
+  // 重置当前局：棋盘重填、分数归零、步数/时间复位；最高分保留不清
+  function doReset() {
+    if (window.GinAudio && window.GinAudio.click) { try { window.GinAudio.click(); } catch (e) {} }
+    initGame();   // initGame 内部 readBest() 保留最高分，并重置 score/movesLeft/timeLeft + fillNoMatches 重填棋盘
+    if (window.GinAudio && window.GinAudio.unlock) { try { window.GinAudio.unlock(); } catch (e) {} }
   }
 
   // ---------- 更新 ----------
@@ -490,6 +497,7 @@
   // ---------- HUD / 侧栏 ----------
   var BTN_HOME    = { x: 12,  y: 10, w: 92,  h: 36 };
   var BTN_FRIEND  = { x: W - 104, y: 10, w: 92, h: 36 };
+  var BTN_RESET   = { x: 12,  y: 334, w: 200, h: 30 };   // 左侧信息列下方：重置按钮
 
   function drawHUD() {
     ctx.save();
@@ -517,7 +525,7 @@
   }
 
   function drawLeftPanel() {
-    var x = 16;
+    var x = 12;
     serifText('分数', x, 80, 13, PAL.dim, 'left', '700');
     monoText(String(score), x, 108, 32, PAL.gold2, 'left', '800');
     serifText('最高分', x, 146, 13, PAL.dim, 'left', '700');
@@ -525,18 +533,41 @@
     serifText('剩余步数', x, 206, 13, PAL.dim, 'left', '700');
     monoText(String(movesLeft), x, 230, 22, movesLeft <= 5 ? PAL.red : PAL.paper, 'left', '800');
     serifText('时间', x, 266, 13, PAL.dim, 'left', '700');
-    drawTimerBar(x, 284, 212, 12, timeLeft / 60, timeLeft <= 10 ? PAL.red : PAL.gold);
-    if (combo > 1) serifText('连击 ×' + combo, x, 322, 17, PAL.gold2, 'left', '800');
+    drawTimerBar(x, 284, 200, 12, timeLeft / 60, timeLeft <= 10 ? PAL.red : PAL.gold);
+    // 重置按钮（金边风格，左侧信息列下方）
+    drawButton(BTN_RESET, '重 置', { serif: true, size: 15 });
+    if (combo > 1) serifText('连击 ×' + combo, x, 322, 16, PAL.gold2, 'left', '800');
     else text('拖动或点击交换相邻宝石', x, 322, 11, PAL.dim, 'left', '500');
   }
 
-  function drawBanner() {
-    // 右侧「角色图鉴」横幅：8 位角色头像 + 名字
-    serifText('角色图鉴', 572, 70, 15, PAL.gold2, 'left', '800');
+  // 图鉴图标：≥48px，深色底 + 与角色同色的描边框
+  function drawCodexIcon(type, cx, cy, size) {
+    var accent = ACCENT[type] || PAL.gold;
+    var x = cx - size / 2, y = cy - size / 2, r = size * 0.22;
+    fillRR(x - 1, y - 1, size + 2, size + 2, r + 1, '#0e1320');   // 深色底
+    if (gemImgOK(type)) {
+      ctx.save();
+      if (rr(x, y, size, size, r)) { ctx.clip(); ctx.drawImage(gemImgs[type], x, y, size, size); }
+      ctx.restore();
+    } else {
+      var g = ctx.createRadialGradient(cx - size * 0.2, cy - size * 0.2, size * 0.1, cx, cy, size * 0.7);
+      g.addColorStop(0, shade(accent, 0.45)); g.addColorStop(1, accent);
+      if (rr(x, y, size, size, r)) { ctx.fillStyle = g; ctx.fill(); }
+      serifText(NAMES[type].charAt(0), cx, cy + 1, size * 0.46, '#2a1c06', 'center', '800');
+    }
+    strokeRR(x, y, size, size, r, accent, 3);   // 同色描边（神乐橙/新八蓝…）
+  }
+
+  function drawCodex() {
+    // 右侧「角色图鉴」：2 列 × 4 行紧凑网格，图标 + 名字上下排，8 个角色全部可见
+    serifText('角色图鉴', 588, 60, 15, PAL.gold2, 'left', '800');
+    var x0 = 584, y0 = 78, cols = 2, cw = 114, ch = 70, ICON = 48;
     for (var i = 0; i < 8; i++) {
-      var y = 98 + i * 32;
-      drawGemFace(i, 592, y, 24, 1);
-      serifText(NAMES[i], 612, y + 1, 13, PAL.paper, 'left', '700');
+      var col = i % cols, row = Math.floor(i / cols);
+      var cx = x0 + col * cw + cw / 2;
+      var top = y0 + row * ch;
+      drawCodexIcon(i, cx, top + 26, ICON);
+      serifText(NAMES[i], cx, top + 54, 13, PAL.paper, 'center', '700');
     }
   }
 
@@ -567,10 +598,9 @@
     drawBackground();
     drawBoardFrame();
     drawGrid();
-    drawBanner();
     drawLeftPanel();
     drawHUD();
-    text('拖动或点击交换相邻宝石', W / 2, 368, 11, PAL.dim, 'center', '500');
+    drawCodex();
     if (screen === 'over') drawEndPanel();
   }
 
@@ -585,11 +615,18 @@
   function isAdjacent(a, b) { return Math.abs(a.r - b.r) + Math.abs(a.c - b.c) === 1; }
 
   function onDown(p) {
-    if (hitButton(p, BTN_HOME, 40)) { location.href = 'home.html'; return; }
-    if (hitButton(p, BTN_FRIEND, 40)) { if (window.GinSocial) { try { window.GinSocial.open('rank'); } catch (e) {} } return; }
+    if (hitButton(p, BTN_HOME, 40)) {
+      if (window.GinAudio && window.GinAudio.click) { try { window.GinAudio.click(); } catch (e) {} }
+      location.href = 'home.html'; return;
+    }
+    if (hitButton(p, BTN_FRIEND, 40)) {
+      if (window.GinAudio && window.GinAudio.click) { try { window.GinAudio.click(); } catch (e) {} }
+      if (window.GinSocial) { try { window.GinSocial.open('rank'); } catch (e) {} } return;
+    }
+    if (screen === 'play' && hitButton(p, BTN_RESET, 40)) { doReset(); return; }
     if (screen === 'over') {
-      if (hitButton(p, BTN_RESTART, 40)) { initGame(); return; }
-      if (hitButton(p, BTN_HOME2, 40)) { location.href = 'home.html'; return; }
+      if (hitButton(p, BTN_RESTART, 40)) { if (window.GinAudio && window.GinAudio.click) { try { window.GinAudio.click(); } catch (e) {} } initGame(); return; }
+      if (hitButton(p, BTN_HOME2, 40)) { if (window.GinAudio && window.GinAudio.click) { try { window.GinAudio.click(); } catch (e) {} } location.href = 'home.html'; return; }
       return;
     }
     if (busy || phase !== 'idle') return;

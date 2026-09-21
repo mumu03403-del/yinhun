@@ -527,8 +527,8 @@
   }
 
   function handleTap(p) {
-    if (hitBtn(p, NAV_BACK)) { location.href = 'home.html'; return; }
-    if (hitBtn(p, NAV_FRIEND)) { if (window.GinSocial && GinSocial.open) { try { GinSocial.open('rank'); } catch (e) {} } return; }
+    if (hitBtn(p, NAV_BACK)) { gaBlip(); location.href = 'home.html'; return; }
+    if (hitBtn(p, NAV_FRIEND)) { gaBlip(); if (window.GinSocial && GinSocial.open) { try { GinSocial.open('rank'); } catch (e) {} } return; }
     if (screen === 'mode') {
       for (var i = 0; i < MODE_BTNS.length; i++) {
         if (hitBtn(p, MODE_BTNS[i])) {

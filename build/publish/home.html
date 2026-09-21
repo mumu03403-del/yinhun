@@ -446,7 +446,7 @@
     card.addEventListener('click', function () {
       if (moved) return;                 // ignore click that ended a drag
       if (i === focus) {
-        if (m.enabled) { if (window.GinAudio) GinAudio.blip(); location.href = m.href; }
+        if (m.enabled) { if (window.GinAudio) GinAudio.unlock(); location.href = m.href; }
         else { shake(card); showToast('敬请期待'); }
       } else {
         setFocus(i);
@@ -471,7 +471,12 @@
   }
 
   function setFocus(i) {
-    focus = Math.max(0, Math.min(MODES.length - 1, i));
+    var ni = Math.max(0, Math.min(MODES.length - 1, i));
+    if (ni !== focus) {
+      focus = ni;
+      // browse sound: switching between game cards
+      if (typeof GinAudio !== 'undefined' && GinAudio && typeof GinAudio.click === 'function') GinAudio.click();
+    }
     render();
   }
   function render() {
@@ -504,11 +509,14 @@
   nextBtn.addEventListener('click', function () { setFocus(focus + 1); });
 
   window.addEventListener('keydown', function (e) {
+    if (settingsOverlay && settingsOverlay.classList.contains('open')) return; // 设置面板打开时不穿透到背后卡片
     if (e.key === 'ArrowLeft') { setFocus(focus - 1); }
     else if (e.key === 'ArrowRight') { setFocus(focus + 1); }
     else if (e.key === 'Enter' || e.key === ' ') {
+      if (e.key === ' ') e.preventDefault(); // Space 不滚动页面
       var m = MODES[focus];
-      if (m.enabled) location.href = m.href; else showToast('敬请期待');
+      if (m.enabled) { if (window.GinAudio) GinAudio.unlock(); location.href = m.href; }
+      else showToast('敬请期待');
     }
   });
 
@@ -540,6 +548,7 @@
 
   // ---- 好友 button: guarded call into social.js (loaded with defer) ----
   friendBtn.addEventListener('click', function () {
+    if (typeof GinAudio !== 'undefined' && GinAudio && typeof GinAudio.click === 'function') GinAudio.click();
     if (typeof GinSocial !== 'undefined' && GinSocial && typeof GinSocial.open === 'function') {
       GinSocial.open('rank');
     }
@@ -551,8 +560,8 @@
   var settingsClose = document.getElementById('settingsClose');
   var audioSwitch = document.getElementById('audioSwitch');
 
-  function openSettings(){ settingsOverlay.classList.add('open'); }
-  function closeSettings(){ settingsOverlay.classList.remove('open'); }
+  function openSettings(){ settingsOverlay.classList.add('open'); if (typeof GinAudio !== 'undefined' && GinAudio) GinAudio.click(); }
+  function closeSettings(){ settingsOverlay.classList.remove('open'); if (typeof GinAudio !== 'undefined' && GinAudio) GinAudio.click(); }
 
   gearBtn.addEventListener('click', openSettings);
   settingsClose.addEventListener('click', closeSettings);
@@ -570,7 +579,8 @@
     audioSwitch.setAttribute('aria-checked', nowOn ? 'true' : 'false');
     if (typeof GinAudio !== 'undefined' && GinAudio) {
       GinAudio.setEnabled(nowOn);
-      if (nowOn && typeof GinAudio.blip === 'function') GinAudio.blip();
+      // blip on every toggle; auto-muted once disabled (no sound after turning off)
+      if (typeof GinAudio.blip === 'function') GinAudio.blip();
     }
   }
   audioSwitch.addEventListener('click', toggleAudio);

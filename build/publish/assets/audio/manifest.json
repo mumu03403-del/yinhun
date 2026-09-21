@@ -82,5 +82,26 @@
     "inDur": 13,
     "outDur": 6.94,
     "kb": 81.7
+  },
+  {
+    "original": "sfx_merge.wav",
+    "output": "sfx_merge.mp3",
+    "inDur": 0.3,
+    "outDur": 0.3,
+    "kb": 8.0
+  },
+  {
+    "original": "sfx_settle.wav",
+    "output": "sfx_settle.mp3",
+    "inDur": 0.6,
+    "outDur": 0.6,
+    "kb": 12.0
+  },
+  {
+    "original": "sfx_unlock.wav",
+    "output": "sfx_unlock.mp3",
+    "inDur": 0.5,
+    "outDur": 0.5,
+    "kb": 10.0
   }
 ]
