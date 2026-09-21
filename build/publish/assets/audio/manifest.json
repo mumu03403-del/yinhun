@@ -1,0 +1,86 @@
+[
+  {
+    "original": "伊丽莎白_ゴザル咕哝声.wav",
+    "output": "voice_伊丽莎白.mp3",
+    "inDur": 4.68,
+    "outDur": 4.16,
+    "kb": 49.3
+  },
+  {
+    "original": "冲田总悟_局長殺しますよ.wav",
+    "output": "voice_冲田总悟.mp3",
+    "inDur": 9,
+    "outDur": 4.7,
+    "kb": 55.4
+  },
+  {
+    "original": "土方十四郎_てめゃ斬る.wav",
+    "output": "voice_土方十四郎.mp3",
+    "inDur": 8.8,
+    "outDur": 5.21,
+    "kb": 61.5
+  },
+  {
+    "original": "坂田银时_糖分が足りねェ.wav",
+    "output": "voice_坂田银时.mp3",
+    "inDur": 3.78,
+    "outDur": 3.38,
+    "kb": 40.1
+  },
+  {
+    "original": "定春_ワオーン犬吠.wav",
+    "output": "voice_定春.mp3",
+    "inDur": 2.78,
+    "outDur": 2.46,
+    "kb": 29.4
+  },
+  {
+    "original": "志村新八_何やってんだアンタ.wav",
+    "output": "voice_志村新八.mp3",
+    "inDur": 3.5,
+    "outDur": 3.4,
+    "kb": 40.4
+  },
+  {
+    "original": "桂小太郎_ヅラじゃない桂だ.wav",
+    "output": "voice_桂小太郎.mp3",
+    "inDur": 1.6,
+    "outDur": 1.39,
+    "kb": 16.8
+  },
+  {
+    "original": "神乐_オラァ飯まだアル.wav",
+    "output": "voice_神乐.mp3",
+    "inDur": 3,
+    "outDur": 2.7,
+    "kb": 32.1
+  },
+  {
+    "original": "神威_お前強そうだな.wav",
+    "output": "voice_神威.mp3",
+    "inDur": 4.5,
+    "outDur": 4.18,
+    "kb": 49.6
+  },
+  {
+    "original": "虚吉田松阳_人間はそれぞれ違う.wav",
+    "output": "voice_虚吉田松阳.mp3",
+    "inDur": 9.1,
+    "outDur": 8.98,
+    "kb": 105.6
+  },
+  {
+    "original": "近藤勋_妙さん付き合って.wav",
+    "output": "voice_近藤勋.mp3",
+    "inDur": 5.8,
+    "outDur": 4.62,
+    "kb": 54.5
+  },
+  {
+    "original": "高杉晋助_この世を壊す.wav",
+    "output": "voice_高杉晋助.mp3",
+    "inDur": 13,
+    "outDur": 6.94,
+    "kb": 81.7
+  }
+]

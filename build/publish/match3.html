@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b0e14">
+<title>银魂消消乐</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #000; overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+                 "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  }
+  #cv { display: block; width: 100%; height: 100%; touch-action: none; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<script src="assets/js/social.js" defer></script>
+<script src="assets/js/audio.js" defer></script>
+<script>
+(function () {
+  "use strict";
+
+  /* =========================================================================
+   * 银魂 · 消消乐（match-3） —— 独立单文件 H5 小游戏
+   * 舞台缩放 / 黑边 letterbox 完全复用 action.html 的成熟方案：
+   *   W=812 H=375；resize() 计算 scale=min(availW/W, availH/H)，
+   *   ctx.setTransform(dpr*scale,0,0,dpr*scale,dpr*ox,dpr*oy)
+   * 玩法：8×8 网格，点击/拖动交换相邻宝石，3+ 同色消除，
+   *       重力下落 + 顶部补充 + 连锁(cascade) 连击倍率。
+   * 步数(30) 或 60s 计时 任一耗尽即结束。最高分写入 localStorage 'match3_best_v1'。
+   * 宝石 = 银魂 8 位角色头像（assets/codex/01..08），加载失败回落彩色 orb + 首字。
+   * ========================================================================= */
+
+  var W = 812, H = 375;
+  var GRID = 8;
+  var CELL = 36;
+  var GX = 262, GY = 72;                 // 网格左上角（居中于中部区域）
+  var HUD_H = 56;
+
+  // ---------- 银魂 premium 调色板 / 字体 ----------
+  var PAL = {
+    bg: '#0b0e14', panel: '#141b28', line: '#2a3550',
+    gold: '#e8c15a', gold2: '#ffd23a', red: '#d84a3b', blue: '#3aa7d8',
+    paper: '#f2ead8', dim: '#8a93ad', wood: '#6b4a2b'
+  };
+  var SANS = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif';
+  var SERIF = '"Hiragino Mincho ProN","Yu Mincho","Noto Serif SC","STSong","SimSun",serif';
+  var activeBtn = null;
+  var seigaihaPat = null;
+
+  // ---------- 宝石 = 银魂角色 ----------
+  var NAMES = ['坂田银时', '志村新八', '神乐', '定春', '近藤勋', '土方十四郎', '冲田总悟', '桂小太郎'];
+  var FILES = [
+    'assets/codex/01_坂田银时.png', 'assets/codex/02_志村新八.png', 'assets/codex/03_神乐.png',
+    'assets/codex/04_定春.png',     'assets/codex/05_近藤勋.png',  'assets/codex/06_土方十四郎.png',
+    'assets/codex/07_冲田总悟.png', 'assets/codex/08_桂小太郎.png'
+  ];
+  // 8 种互不相同的强调色（对应角色气质）
+  var ACCENT = ['#d9e2f0', '#6fb1e0', '#e85b5b', '#e0a85b', '#6fcf97', '#b56ad8', '#5ac8d8', '#d88f3b'];
+  var gemImgs = [];
+  (function preloadGems() {
+    for (var i = 0; i < 8; i++) {
+      var im = new Image();
+      im.src = FILES[i];
+      gemImgs.push(im);
+    }
+  })();
+  function gemImgOK(t) {
+    var im = gemImgs[t];
+    return !!(im && im.complete && im.naturalWidth > 0);
+  }
+
+  // ---------- 游戏状态 ----------
+  var screen = 'play';              // play | over
+  var board = [];                    // board[r][c] = gem | null
+  var selected = null;               // {r,c}
+  var dragOrigin = null;             // 拖动起点（用于拖拽交换）
+  var busy = false;                  // 动画/结算进行中，禁止输入
+  var phase = 'idle';                // idle | swap | swapback | clearing | falling
+  var combo = 0;                     // 连锁层数（连击）
+  var score = 0, best = 0;
+  var movesLeft = 30, timeLeft = 60;
+  var animTimer = 0;                 // 交换动画计时
+  var clearTimer = 0;                // 消除动画计时
+  var pendingSwap = null;            // {r1,c1,r2,c2} 待回退的交换
+  var clock = 0;                     // 全局时间（脉冲等）
+
+  var SWAP_DUR = 0.16, CLEAR_DUR = 0.22, FALL_SPEED = 16;
+  var BEST_KEY = 'match3_best_v1';
+
+  // ---------- 存档：最高分 ----------
+  function readBest() {
+    try {
+      var raw = localStorage.getItem(BEST_KEY);
+      var n = raw == null ? 0 : parseInt(raw, 10);
+      return (isFinite(n) && n > 0) ? n : 0;
+    } catch (e) { return 0; }
+  }
+  function writeBest(v) {
+    try { localStorage.setItem(BEST_KEY, String(v)); } catch (e) {}
+  }
+
+  // ---------- 宝石对象 ----------
+  function newGem(type, r, c, px, py) {
+    return { type: type, px: px, py: py, scale: 1, clearing: false };
+  }
+  function randType() { return Math.floor(Math.random() * 8); }
+  function cellX(c) { return GX + c * CELL + CELL / 2; }
+  function cellY(r) { return GY + r * CELL + CELL / 2; }
+
+  // ---------- 初始化 / 重开 ----------
+  function initGame() {
+    board = [];
+    for (var r = 0; r < GRID; r++) {
+      var row = [];
+      for (var c = 0; c < GRID; c++) row.push(newGem(randType(), r, c, cellX(c), cellY(r)));
+      board.push(row);
+    }
+    fillNoMatches();
+    score = 0; movesLeft = 30; timeLeft = 60; combo = 0;
+    selected = null; dragOrigin = null; busy = false; phase = 'idle';
+    screen = 'play'; pendingSwap = null;
+    best = readBest();
+  }
+
+  // 重新随机所有处于匹配中的格子，直到开局无现成消除
+  function fillNoMatches() {
+    for (var guard = 0; guard < 200; guard++) {
+      var m = findMatches();
+      if (m.length === 0) return;
+      for (var i = 0; i < m.length; i++) {
+        board[m[i].r][m[i].c].type = randType();
+      }
+    }
+  }
+
+  // ---------- 匹配检测：行/列 3+ 同色 ----------
+  function findMatches() {
+    var mark = [];
+    for (var r = 0; r < GRID; r++) { mark.push([]); for (var c = 0; c < GRID; c++) mark[r].push(false); }
+    // 水平
+    for (r = 0; r < GRID; r++) {
+      var c = 0;
+      while (c < GRID) {
+        var g = board[r][c];
+        if (!g) { c++; continue; }
+        var t = g.type, run = 1, k = c + 1;
+        while (k < GRID && board[r][k] && board[r][k].type === t) { run++; k++; }
+        if (run >= 3) for (var j = c; j < c + run; j++) mark[r][j] = true;
+        c = k;
+      }
+    }
+    // 垂直
+    for (c = 0; c < GRID; c++) {
+      r = 0;
+      while (r < GRID) {
+        var g2 = board[r][c];
+        if (!g2) { r++; continue; }
+        var t2 = g2.type, run2 = 1, k2 = r + 1;
+        while (k2 < GRID && board[k2][c] && board[k2][c].type === t2) { run2++; k2++; }
+        if (run2 >= 3) for (var j2 = r; j2 < r + run2; j2++) mark[j2][c] = true;
+        r = k2;
+      }
+    }
+    var list = [];
+    for (r = 0; r < GRID; r++) for (c = 0; c < GRID; c++) if (mark[r][c]) list.push({ r: r, c: c });
+    return list;
+  }
+
+  // ---------- 重力 + 顶部补充 ----------
+  function gravityAndRefill() {
+    for (var c = 0; c < GRID; c++) {
+      var stack = [];
+      for (var r = 0; r < GRID; r++) if (board[r][c]) stack.push(board[r][c]);
+      var writeR = GRID - 1;
+      for (var i = stack.length - 1; i >= 0; i--) { board[writeR][c] = stack[i]; writeR--; }
+      // 顶部 writeR..0 为新宝石，从上方落下
+      for (var rr = writeR; rr >= 0; rr--) {
+        var gem = newGem(randType(), rr, c, cellX(c), cellY(rr) - (writeR - rr + 1) * CELL);
+        board[rr][c] = gem;
+      }
+    }
+  }
+
+  // ---------- 交换 ----------
+  function startSwap(r1, c1, r2, c2) {
+    var t = board[r1][c1]; board[r1][c1] = board[r2][c2]; board[r2][c2] = t;
+    pendingSwap = { r1: r1, c1: c1, r2: r2, c2: c2 };
+    busy = true; phase = 'swap'; animTimer = SWAP_DUR;
+    selected = null; dragOrigin = null;
+  }
+  function afterSwap() {
+    var m = findMatches();
+    if (m.length > 0) {
+      movesLeft--;                 // 仅合法交换消耗一步
+      combo = 0;
+      stepResolve();
+    } else {
+      // 非法交换：换回
+      var p = pendingSwap;
+      var t = board[p.r1][p.c1]; board[p.r1][p.c1] = board[p.r2][p.c2]; board[p.r2][p.c2] = t;
+      phase = 'swapback'; animTimer = SWAP_DUR;
+    }
+  }
+  function onSwapBackDone() { phase = 'idle'; busy = false; }
+
+  // ---------- 结算（消除 → 重力 → 下落 → 下一连锁） ----------
+  function stepResolve() {
+    var m = findMatches();
+    if (m.length === 0) {
+      combo = 0; busy = false; phase = 'idle';
+      if (screen === 'play' && (movesLeft <= 0 || timeLeft <= 0)) endGame();
+      return;
+    }
+    combo++;
+    var pts = Math.round(m.length * 10 * combo);   // 连击倍率：连锁越深，单次得分越高
+    score += pts;
+    if (window.GinAudio && window.GinAudio.playSfx) {
+      try {
+        window.GinAudio.playSfx('sfx_merge');
+        if (combo >= 2 || m.length >= 5) window.GinAudio.playSfx('sfx_unlock');
+      } catch (e) {}
+    }
+    for (var i = 0; i < m.length; i++) board[m[i].r][m[i].c].clearing = true;
+    clearTimer = 0; phase = 'clearing';
+  }
+
+  function endGame() {
+    if (screen === 'over') return;
+    screen = 'over';
+    if (score > best) { best = score; writeBest(best); }
+  }
+
+  // ---------- 更新 ----------
+  function lerpGems(dt) {
+    var k = 1 - Math.exp(-dt * FALL_SPEED);
+    for (var r = 0; r < GRID; r++) for (var c = 0; c < GRID; c++) {
+      var g = board[r][c]; if (!g) continue;
+      var tx = cellX(c), ty = cellY(r);
+      g.px += (tx - g.px) * k;
+      g.py += (ty - g.py) * k;
+    }
+  }
+  function allSettled() {
+    for (var r = 0; r < GRID; r++) for (var c = 0; c < GRID; c++) {
+      var g = board[r][c]; if (!g) continue;
+      if (Math.abs(g.px - cellX(c)) > 0.6 || Math.abs(g.py - cellY(r)) > 0.6) return false;
+    }
+    return true;
+  }
+
+  function update(dt) {
+    clock += dt;
+    if (screen === 'play') timeLeft = Math.max(0, timeLeft - dt);
+    lerpGems(dt);
+
+    if (phase === 'swap' || phase === 'swapback') {
+      animTimer -= dt;
+      if (animTimer <= 0) { if (phase === 'swap') afterSwap(); else onSwapBackDone(); }
+    } else if (phase === 'clearing') {
+      clearTimer += dt;
+      var sc = Math.max(0, 1 - clearTimer / CLEAR_DUR);
+      for (var r = 0; r < GRID; r++) for (var c = 0; c < GRID; c++) {
+        var g = board[r][c]; if (g && g.clearing) g.scale = sc;
+      }
+      if (clearTimer >= CLEAR_DUR) {
+        for (r = 0; r < GRID; r++) for (c = 0; c < GRID; c++) {
+          if (board[r][c] && board[r][c].clearing) board[r][c] = null;
+        }
+        gravityAndRefill();
+        phase = 'falling';
+      }
+    } else if (phase === 'falling') {
+      if (allSettled()) stepResolve();
+    } else if (phase === 'idle') {
+      if (screen === 'play' && (movesLeft <= 0 || timeLeft <= 0)) endGame();
+    }
+  }
+
+  // ---------- 绘制工具（复用 action.html） ----------
+  var cv = document.getElementById('cv');
+  var ctx = cv.getContext('2d');
+  var view = { scale: 1, ox: 0, oy: 0, dpr: 1 };
+
+  var safeProbe = document.createElement('div');
+  safeProbe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;' +
+    'padding:env(safe-area-inset-top) env(safe-area-inset-right) ' +
+    'env(safe-area-inset-bottom) env(safe-area-inset-left);';
+  document.documentElement.appendChild(safeProbe);
+  function readSafeArea() {
+    try {
+      var cs = getComputedStyle(safeProbe);
+      return {
+        top: parseFloat(cs.paddingTop) || 0, right: parseFloat(cs.paddingRight) || 0,
+        bottom: parseFloat(cs.paddingBottom) || 0, left: parseFloat(cs.paddingLeft) || 0
+      };
+    } catch (e) { return { top: 0, right: 0, bottom: 0, left: 0 }; }
+  }
+
+  function resize() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 3);
+    var vw = window.innerWidth, vh = window.innerHeight;
+    cv.width = Math.round(vw * dpr);
+    cv.height = Math.round(vh * dpr);
+    cv.style.width = vw + 'px';
+    cv.style.height = vh + 'px';
+    var sa = readSafeArea();
+    var availW = Math.max(1, vw - sa.left - sa.right);
+    var availH = Math.max(1, vh - sa.top - sa.bottom);
+    var scale = Math.min(availW / W, availH / H);
+    if (!isFinite(scale) || scale <= 0) scale = 1;
+    view.scale = scale;
+    view.ox = sa.left + (availW - W * scale) / 2;
+    view.oy = sa.top + (availH - H * scale) / 2;
+    view.dpr = dpr;
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * view.ox, dpr * view.oy);
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', function () { setTimeout(resize, 120); });
+
+  function toLogic(ev) {
+    var r = cv.getBoundingClientRect();
+    return { x: (ev.clientX - r.left - view.ox) / view.scale, y: (ev.clientY - r.top - view.oy) / view.scale };
+  }
+  function hitRect(p, b) { return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h; }
+  function hitButton(p, b, minPx) {
+    minPx = minPx || 0;
+    var hw = Math.max(b.w, minPx / view.scale), hh = Math.max(b.h, minPx / view.scale);
+    return Math.abs(p.x - (b.x + b.w / 2)) <= hw / 2 && Math.abs(p.y - (b.y + b.h / 2)) <= hh / 2;
+  }
+
+  function rr(x, y, w, h, r) {
+    if (w <= 0 || h <= 0) return false;
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+    return true;
+  }
+  function fillRR(x, y, w, h, r, color) { if (!rr(x, y, w, h, r)) return; ctx.fillStyle = color; ctx.fill(); }
+  function strokeRR(x, y, w, h, r, color, lw) { if (!rr(x, y, w, h, r)) return; ctx.strokeStyle = color; ctx.lineWidth = lw || 2; ctx.stroke(); }
+  function text(str, x, y, size, color, align, weight, family) {
+    ctx.font = (weight || '600') + ' ' + size + 'px ' + (family || SANS);
+    ctx.fillStyle = color; ctx.textAlign = align || 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(str, x, y);
+  }
+  function serifText(str, x, y, size, color, align, weight) {
+    text(str, x, y, size, color, align, weight, SERIF);
+  }
+  function monoText(str, x, y, size, color, align, weight) {
+    ctx.font = (weight || '700') + ' ' + size + 'px "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace';
+    ctx.fillStyle = color; ctx.textAlign = align || 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(str, x, y);
+  }
+  function shade(hex, k) {
+    var h = hex.replace('#', '');
+    var r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
+    if (k >= 0) { r = Math.round(r + (255 - r) * k); g = Math.round(g + (255 - g) * k); b = Math.round(b + (255 - b) * k); }
+    else { r = Math.round(r * (1 + k)); g = Math.round(g * (1 + k)); b = Math.round(b * (1 + k)); }
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+  function drawButton(b, label, opts) {
+    opts = opts || {};
+    var ghost = !!opts.ghost;
+    var serif = !!opts.serif;
+    var pressed = (b === activeBtn);
+    var r = opts.r || 14;
+    var x = b.x, y = b.y + (pressed ? 2 : 0), w = b.w, h = b.h;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = pressed ? 3 : 10;
+    ctx.shadowOffsetY = pressed ? 1 : 5;
+    if (ghost) {
+      var gp = ctx.createLinearGradient(0, y, 0, y + h);
+      gp.addColorStop(0, '#1b2435'); gp.addColorStop(1, '#10161f');
+      if (rr(x, y, w, h, r)) { ctx.fillStyle = gp; ctx.fill(); }
+    } else {
+      var g = ctx.createLinearGradient(0, y, 0, y + h);
+      g.addColorStop(0, '#ffe88a'); g.addColorStop(0.5, PAL.gold); g.addColorStop(1, '#c2912f');
+      if (rr(x, y, w, h, r)) { ctx.fillStyle = g; ctx.fill(); }
+    }
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    strokeRR(x, y, w, h, r, ghost ? PAL.gold : '#5a3d1e', 2);
+    if (!pressed) {
+      ctx.save();
+      if (rr(x + 2, y + 2, w - 4, h * 0.5, Math.max(1, r - 2))) { ctx.clip();
+        var hl = ctx.createLinearGradient(0, y, 0, y + h * 0.55);
+        hl.addColorStop(0, 'rgba(255,255,255,0.40)'); hl.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = hl; ctx.fillRect(x, y, w, h);
+      }
+      ctx.restore();
+    }
+    var tc = ghost ? PAL.paper : '#3a2a0a';
+    text(label, x + w / 2, y + h / 2 + (pressed ? 1 : -1), opts.size || 15, tc, 'center', '800', serif ? SERIF : SANS);
+    ctx.restore();
+  }
+
+  function buildSeigaiha() {
+    var r = 22;
+    var tile = document.createElement('canvas');
+    tile.width = r * 2; tile.height = r;
+    var c = tile.getContext('2d');
+    c.strokeStyle = 'rgba(232,193,90,0.9)'; c.lineWidth = 2;
+    function fan(cx, cy) {
+      for (var k = 1; k <= 4; k++) {
+        c.beginPath(); c.arc(cx, cy, r * k / 4, Math.PI, 2 * Math.PI); c.stroke();
+      }
+    }
+    fan(0, r); fan(r, r); fan(r * 2, r);
+    try { return ctx.createPattern(tile, 'repeat'); } catch (e) { return null; }
+  }
+  function drawBackground() {
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#11161f'); g.addColorStop(0.55, PAL.bg); g.addColorStop(1, '#070a10');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    if (!seigaihaPat) seigaihaPat = buildSeigaiha();
+    if (seigaihaPat) {
+      ctx.save();
+      ctx.globalAlpha = 0.07;
+      ctx.fillStyle = seigaihaPat;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
+    var rg = ctx.createRadialGradient(W / 2, 30, 10, W / 2, 30, W * 0.6);
+    rg.addColorStop(0, 'rgba(232,193,90,0.10)'); rg.addColorStop(1, 'rgba(232,193,90,0)');
+    ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H * 0.6);
+  }
+
+  // ---------- 宝石绘制 ----------
+  function drawGemFace(type, cx, cy, size, sc) {
+    sc = sc == null ? 1 : sc;
+    var accent = ACCENT[type] || PAL.gold;
+    var s = size * sc;
+    var x = cx - s / 2, y = cy - s / 2;
+    var r = s * 0.30;
+    if (gemImgOK(type)) {
+      ctx.save();
+      if (rr(x, y, s, s, r)) { ctx.clip(); ctx.drawImage(gemImgs[type], x, y, s, s); }
+      ctx.restore();
+    } else {
+      // 回落：彩色 orb + 角色首字
+      var g = ctx.createRadialGradient(cx - s * 0.2, cy - s * 0.2, s * 0.1, cx, cy, s * 0.7);
+      g.addColorStop(0, shade(accent, 0.45)); g.addColorStop(1, accent);
+      if (rr(x, y, s, s, r)) { ctx.fillStyle = g; ctx.fill(); }
+      serifText(NAMES[type].charAt(0), cx, cy + 1, s * 0.46, '#2a1c06', 'center', '800');
+    }
+    strokeRR(x, y, s, s, r, shade(accent, -0.25), 2);
+  }
+
+  // 棋盘底框
+  function drawBoardFrame() {
+    var pad = 8;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
+    fillRR(GX - pad, GY - pad, GRID * CELL + pad * 2, GRID * CELL + pad * 2, 16, PAL.panel);
+    ctx.restore();
+    strokeRR(GX - pad, GY - pad, GRID * CELL + pad * 2, GRID * CELL + pad * 2, 16, PAL.line, 1.5);
+    // 棋格底纹（深浅交替）
+    for (var r = 0; r < GRID; r++) for (var c = 0; c < GRID; c++) {
+      var dark = (r + c) % 2 === 0;
+      fillRR(GX + c * CELL + 1, GY + r * CELL + 1, CELL - 2, CELL - 2, 8, dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.18)');
+    }
+  }
+
+  function drawGrid() {
+    for (var r = 0; r < GRID; r++) for (var c = 0; c < GRID; c++) {
+      var g = board[r][c]; if (!g) continue;
+      drawGemFace(g.type, g.px, g.py, CELL - 6, g.scale);
+      if (selected && selected.r === r && selected.c === c) {
+        var pulse = 0.55 + 0.45 * Math.sin(clock * 6);
+        ctx.save();
+        ctx.globalAlpha = pulse;
+        strokeRR(g.px - (CELL - 6) / 2 - 2, g.py - (CELL - 6) / 2 - 2, CELL - 2, CELL - 2, (CELL - 6) * 0.30, PAL.gold2, 3);
+        ctx.restore();
+      }
+    }
+  }
+
+  // ---------- HUD / 侧栏 ----------
+  var BTN_HOME    = { x: 12,  y: 10, w: 92,  h: 36 };
+  var BTN_FRIEND  = { x: W - 104, y: 10, w: 92, h: 36 };
+
+  function drawHUD() {
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 3;
+    fillRR(0, 0, W, HUD_H, 0, PAL.panel);
+    ctx.restore();
+    strokeRR(0, HUD_H - 1, W, 1, 0, PAL.line, 1);
+    drawButton(BTN_HOME, '返回首页', { ghost: true, serif: false, size: 15 });
+    drawButton(BTN_FRIEND, '好友', { ghost: true, serif: false, size: 15 });
+    serifText('银魂 · 消消乐', W / 2, 28, 22, PAL.gold2, 'center', '800');
+  }
+
+  function drawTimerBar(x, y, w, h, ratio, color) {
+    ratio = Math.max(0, Math.min(1, ratio));
+    fillRR(x, y, w, h, h / 2, 'rgba(11,14,20,0.85)');
+    var fw = w * ratio;
+    if (fw > 0) {
+      var g = ctx.createLinearGradient(0, y, 0, y + h);
+      g.addColorStop(0, shade(color, 0.3)); g.addColorStop(1, color);
+      ctx.save();
+      if (rr(x, y, fw, h, h / 2)) { ctx.clip(); ctx.fillStyle = g; ctx.fillRect(x, y, fw, h); }
+      ctx.restore();
+    }
+    strokeRR(x, y, w, h, h / 2, 'rgba(232,193,90,0.5)', 1.5);
+  }
+
+  function drawLeftPanel() {
+    var x = 16;
+    serifText('分数', x, 80, 13, PAL.dim, 'left', '700');
+    monoText(String(score), x, 108, 32, PAL.gold2, 'left', '800');
+    serifText('最高分', x, 146, 13, PAL.dim, 'left', '700');
+    monoText(String(best), x, 170, 20, PAL.gold, 'left', '800');
+    serifText('剩余步数', x, 206, 13, PAL.dim, 'left', '700');
+    monoText(String(movesLeft), x, 230, 22, movesLeft <= 5 ? PAL.red : PAL.paper, 'left', '800');
+    serifText('时间', x, 266, 13, PAL.dim, 'left', '700');
+    drawTimerBar(x, 284, 212, 12, timeLeft / 60, timeLeft <= 10 ? PAL.red : PAL.gold);
+    if (combo > 1) serifText('连击 ×' + combo, x, 322, 17, PAL.gold2, 'left', '800');
+    else text('拖动或点击交换相邻宝石', x, 322, 11, PAL.dim, 'left', '500');
+  }
+
+  function drawBanner() {
+    // 右侧「角色图鉴」横幅：8 位角色头像 + 名字
+    serifText('角色图鉴', 572, 70, 15, PAL.gold2, 'left', '800');
+    for (var i = 0; i < 8; i++) {
+      var y = 98 + i * 32;
+      drawGemFace(i, 592, y, 24, 1);
+      serifText(NAMES[i], 612, y + 1, 13, PAL.paper, 'left', '700');
+    }
+  }
+
+  // ---------- 结束面板 ----------
+  var PANEL = { x: 196, y: 77, w: 420, h: 221 };
+  var BTN_RESTART = { x: 226, y: 250, w: 160, h: 44 };
+  var BTN_HOME2   = { x: 426, y: 250, w: 160, h: 44 };
+
+  function drawEndPanel() {
+    ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8;
+    fillRR(PANEL.x, PANEL.y, PANEL.w, PANEL.h, 20, PAL.panel);
+    ctx.restore();
+    strokeRR(PANEL.x, PANEL.y, PANEL.w, PANEL.h, 20, PAL.gold, 2);
+    strokeRR(PANEL.x + 6, PANEL.y + 6, PANEL.w - 12, PANEL.h - 12, 16, 'rgba(232,193,90,0.25)', 1);
+    serifText(movesLeft <= 0 ? '步数用尽！' : '时间到！', PANEL.x + PANEL.w / 2, PANEL.y + 44, 26, PAL.gold2, 'center', '800');
+    text('最终得分', PANEL.x + PANEL.w / 2, PANEL.y + 86, 14, '#f0e2a8', 'center', '600');
+    monoText(String(score), PANEL.x + PANEL.w / 2, PANEL.y + 120, 34, PAL.gold2, 'center', '800');
+    text('最高分  ' + best, PANEL.x + PANEL.w / 2, PANEL.y + 158, 14, PAL.dim, 'center', '600');
+    drawButton(BTN_RESTART, '再来一局', { serif: true, size: 16 });
+    drawButton(BTN_HOME2, '返回首页', { ghost: true, serif: true, size: 16 });
+  }
+
+  // ---------- 渲染 ----------
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+    drawBackground();
+    drawBoardFrame();
+    drawGrid();
+    drawBanner();
+    drawLeftPanel();
+    drawHUD();
+    text('拖动或点击交换相邻宝石', W / 2, 368, 11, PAL.dim, 'center', '500');
+    if (screen === 'over') drawEndPanel();
+  }
+
+  // ---------- 输入 ----------
+  function cellAt(p) {
+    if (p.x >= GX && p.x <= GX + GRID * CELL && p.y >= GY && p.y <= GY + GRID * CELL) {
+      var c = Math.floor((p.x - GX) / CELL), r = Math.floor((p.y - GY) / CELL);
+      if (r >= 0 && r < GRID && c >= 0 && c < GRID) return { r: r, c: c };
+    }
+    return null;
+  }
+  function isAdjacent(a, b) { return Math.abs(a.r - b.r) + Math.abs(a.c - b.c) === 1; }
+
+  function onDown(p) {
+    if (hitButton(p, BTN_HOME, 40)) { location.href = 'home.html'; return; }
+    if (hitButton(p, BTN_FRIEND, 40)) { if (window.GinSocial) { try { window.GinSocial.open('rank'); } catch (e) {} } return; }
+    if (screen === 'over') {
+      if (hitButton(p, BTN_RESTART, 40)) { initGame(); return; }
+      if (hitButton(p, BTN_HOME2, 40)) { location.href = 'home.html'; return; }
+      return;
+    }
+    if (busy || phase !== 'idle') return;
+    var cell = cellAt(p); if (!cell) return;
+    if (selected && isAdjacent(selected, cell)) {
+      startSwap(selected.r, selected.c, cell.r, cell.c);
+    } else {
+      selected = cell; dragOrigin = cell;   // 点击选中 / 拖动起点
+    }
+  }
+  function onMove(p) {
+    if (screen !== 'play' || busy || phase !== 'idle' || !dragOrigin) return;
+    var cell = cellAt(p); if (!cell) return;
+    if (isAdjacent(dragOrigin, cell) && !(cell.r === dragOrigin.r && cell.c === dragOrigin.c)) {
+      startSwap(dragOrigin.r, dragOrigin.c, cell.r, cell.c);
+      dragOrigin = null; selected = null;
+    }
+  }
+  function onUp() { dragOrigin = null; }    // 保留 selected 以支持「点选两段」
+
+  cv.addEventListener('pointerdown', function (ev) {
+    ev.preventDefault();
+    if (cv.setPointerCapture) { try { cv.setPointerCapture(ev.pointerId); } catch (e) {} }
+    onDown(toLogic(ev));
+  });
+  cv.addEventListener('pointermove', function (ev) { ev.preventDefault(); onMove(toLogic(ev)); });
+  cv.addEventListener('pointerup', function (ev) { ev.preventDefault(); activeBtn = null; onUp(); });
+  cv.addEventListener('pointercancel', function (ev) { activeBtn = null; dragOrigin = null; });
+  cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  // ---------- 主循环 ----------
+  var last = 0;
+  function loop(ts) {
+    var now = ts / 1000;
+    var dt = last ? Math.min(0.05, now - last) : 0;
+    last = now;
+    update(dt);
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  function boot() {
+    resize();
+    initGame();
+    requestAnimationFrame(loop);
+  }
+
+  // 自测钩子（供验证 / 调试，不影响正常游玩）
+  window.__match3 = {
+    getScore: function () { return score; },
+    getBest: function () { return best; },
+    getMoves: function () { return movesLeft; },
+    getTime: function () { return timeLeft; },
+    getPhase: function () { return phase; },
+    getScreen: function () { return screen; },
+    getCombo: function () { return combo; },
+    getBoard: function () { return board.map(function (row) { return row.map(function (g) { return g ? g.type : -1; }); }); },
+    findMatches: findMatches,
+    startSwap: startSwap,
+    initGame: initGame,
+    BEST_KEY: BEST_KEY
+  };
+
+  boot();
+})();
+</script>
+</body>
+</html>

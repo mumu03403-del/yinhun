@@ -229,6 +229,89 @@
     opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s ease;
   }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(-6px); }
+
+  /* ============ Gear (settings) button ============ */
+  .top-actions{ display:flex; align-items:center; gap:10px; }
+  .gear-btn{
+    width:38px; height:38px; border-radius:11px;
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--serif); font-size:21px; line-height:1;
+    color:var(--gold);
+    background:linear-gradient(180deg, rgba(232,193,90,.18), rgba(232,193,90,.04));
+    border:1.5px solid var(--gold);
+    cursor:pointer;
+    box-shadow:0 2px 10px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.15);
+    transition:transform .12s ease, box-shadow .2s ease, background .2s ease;
+    text-shadow:0 0 8px rgba(232,193,90,.5);
+  }
+  .gear-btn:hover{ background:linear-gradient(180deg, rgba(232,193,90,.30), rgba(232,193,90,.08)); }
+  .gear-btn:active{ transform:translateY(1px) scale(.96); box-shadow:0 1px 4px rgba(0,0,0,.5); }
+
+  /* ============ Settings overlay ============ */
+  .settings-overlay{
+    position:absolute; inset:0; z-index:20;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(6,9,14,.62);
+    opacity:0; pointer-events:none;
+    transition:opacity .22s ease;
+  }
+  .settings-overlay.open{ opacity:1; pointer-events:auto; }
+  .settings-panel{
+    position:relative;
+    width:300px; max-width:84%;
+    background:#141b28;
+    border:2px solid #e8c15a;
+    border-radius:16px;
+    padding:26px 22px 22px;
+    box-shadow:0 0 0 1px rgba(232,193,90,.25), 0 18px 50px rgba(0,0,0,.6);
+    transform:scale(.94);
+    transition:transform .22s cubic-bezier(.22,1,.36,1);
+  }
+  .settings-overlay.open .settings-panel{ transform:scale(1); }
+  .settings-close{
+    position:absolute; top:8px; right:8px;
+    width:34px; height:34px; border-radius:9px;
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--sans); font-size:18px; line-height:1;
+    color:var(--gold); background:transparent;
+    border:1.5px solid rgba(232,193,90,.5); cursor:pointer;
+    transition:background .2s ease, transform .12s ease;
+  }
+  .settings-close:hover{ background:rgba(232,193,90,.14); }
+  .settings-close:active{ transform:scale(.92); }
+  .settings-title{
+    margin:0 0 18px; text-align:center;
+    font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif SC","STSong","SimSun",serif;
+    font-weight:700; font-size:26px; letter-spacing:4px;
+    color:var(--gold);
+    text-shadow:0 0 12px rgba(232,193,90,.4), 0 1px 0 #000;
+  }
+  .settings-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 4px;
+    border-top:1px solid #2a3550;
+  }
+  .settings-label{
+    font-family:var(--sans); font-size:15px; font-weight:700; letter-spacing:1px;
+    color:var(--paper);
+  }
+  /* on/off switch */
+  .switch{
+    position:relative; width:56px; height:30px; border-radius:999px;
+    border:1.5px solid var(--gold); cursor:pointer; padding:0;
+    background:rgba(232,193,90,.10);
+    transition:background .2s ease;
+    box-shadow:inset 0 1px 3px rgba(0,0,0,.4);
+  }
+  .switch[aria-checked="true"]{ background:linear-gradient(180deg,#ffd23a,#e8c15a); }
+  .switch .switch-knob{
+    position:absolute; top:50%; left:3px; transform:translateY(-50%);
+    width:22px; height:22px; border-radius:50%;
+    background:#141b28; border:1.5px solid #e8c15a;
+    box-shadow:0 1px 4px rgba(0,0,0,.5);
+    transition:left .2s cubic-bezier(.22,1,.36,1), background .2s ease;
+  }
+  .switch[aria-checked="true"] .switch-knob{ left:31px; background:#fff; border-color:#fff; }
 </style>
 </head>
 <body>
@@ -251,7 +334,10 @@
         </svg>
         <span class="title">銀魂ゲーム屋</span>
       </div>
-      <button class="friend-btn" id="friendBtn" type="button">好友</button>
+      <div class="top-actions">
+        <button class="friend-btn" id="friendBtn" type="button">好友</button>
+        <button class="gear-btn" id="gearBtn" type="button" aria-label="设置">⚙</button>
+      </div>
     </header>
 
     <main class="carousel-wrap">
@@ -264,6 +350,19 @@
 
     <div class="hint">← → 选择 · 点击进入</div>
     <div class="toast" id="toast">敬请期待</div>
+
+    <div class="settings-overlay" id="settingsOverlay" role="dialog" aria-modal="true" aria-label="设置">
+      <div class="settings-panel">
+        <button class="settings-close" id="settingsClose" type="button" aria-label="关闭">✕</button>
+        <h2 class="settings-title">设置</h2>
+        <div class="settings-row">
+          <span class="settings-label">音效</span>
+          <button class="switch" id="audioSwitch" type="button" role="switch" aria-checked="true" aria-label="音效开关">
+            <span class="switch-knob"></span>
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -276,10 +375,10 @@
       img:'assets/codex/01_坂田银时.png', enabled:true },
     { name:'横板平A', sub:'12关横版闯关', href:'action.html',
       img:'assets/codex/06_土方十四郎.png', enabled:true },
-    { name:'五子棋', sub:'人机/双人对弈', href:'index.html?mode=gomoku',
+    { name:'五子棋', sub:'人机/双人对弈', href:'gomoku.html',
       img:'assets/codex/04_定春.png', enabled:true },
-    { name:'消消乐', sub:'三消对战', href:'',
-      img:'assets/codex/03_神乐.png', enabled:false },
+    { name:'消消乐', sub:'三消对战', href:'match3.html',
+      img:'assets/codex/03_神乐.png', enabled:true },
     { name:'抽卡', sub:'召唤你的武士', href:'',
       img:'assets/codex/12_虚_吉田松阳.png', enabled:false }
   ];
@@ -347,7 +446,7 @@
     card.addEventListener('click', function () {
       if (moved) return;                 // ignore click that ended a drag
       if (i === focus) {
-        if (m.enabled) { location.href = m.href; }
+        if (m.enabled) { if (window.GinAudio) GinAudio.blip(); location.href = m.href; }
         else { shake(card); showToast('敬请期待'); }
       } else {
         setFocus(i);
@@ -446,6 +545,37 @@
     }
   });
 
+  // ---- settings overlay (Gintama audio toggle) ----
+  var gearBtn = document.getElementById('gearBtn');
+  var settingsOverlay = document.getElementById('settingsOverlay');
+  var settingsClose = document.getElementById('settingsClose');
+  var audioSwitch = document.getElementById('audioSwitch');
+
+  function openSettings(){ settingsOverlay.classList.add('open'); }
+  function closeSettings(){ settingsOverlay.classList.remove('open'); }
+
+  gearBtn.addEventListener('click', openSettings);
+  settingsClose.addEventListener('click', closeSettings);
+  settingsOverlay.addEventListener('click', function (e) {
+    if (e.target === settingsOverlay) closeSettings();
+  });
+
+  // audio switch reflects GinAudio (deferred module — read it once available)
+  function initAudioSwitch(){
+    var on = (typeof GinAudio !== 'undefined' && GinAudio) ? GinAudio.isEnabled() : true;
+    audioSwitch.setAttribute('aria-checked', on ? 'true' : 'false');
+  }
+  function toggleAudio(){
+    var nowOn = audioSwitch.getAttribute('aria-checked') !== 'true';
+    audioSwitch.setAttribute('aria-checked', nowOn ? 'true' : 'false');
+    if (typeof GinAudio !== 'undefined' && GinAudio) {
+      GinAudio.setEnabled(nowOn);
+      if (nowOn && typeof GinAudio.blip === 'function') GinAudio.blip();
+    }
+  }
+  audioSwitch.addEventListener('click', toggleAudio);
+  document.addEventListener('DOMContentLoaded', initAudioSwitch);
+
   // ---- fit stage to viewport (letterbox) ----
   var stage = document.getElementById('stage');
   function fit() {
@@ -461,5 +591,6 @@
 })();
 </script>
 <script src="assets/js/social.js" defer></script>
+<script src="assets/js/audio.js" defer></script>
 </body>
 </html>

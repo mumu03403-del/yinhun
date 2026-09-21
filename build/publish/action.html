@@ -22,6 +22,7 @@
     font-size: 18px; font-weight: 700; padding: 24px; box-sizing: border-box; }
   #rot.show { display: flex; }
 </style>
+<script src="assets/js/audio.js" defer></script>
 </head>
 <body>
 <canvas id="cv"></canvas>
@@ -118,6 +119,9 @@
   var floats = [];
   var toast = null;
   var shake = 0;
+  var whiteFlash = 0;       // Boss 登场白屏闪光
+  var particles = [];       // 金币迸发粒子
+  var _loseSfx = false;     // 失败音效只播一次
   var lastReward = 0;
   var lastBreak = { clear: 0, boss: 0 };
 
@@ -212,6 +216,55 @@
     try { localStorage.setItem(PROGRESS_KEY, JSON.stringify({ unlocked: unlocked })); } catch (e) {}
   }
 
+  // ---------- 战斗音效 & 特效（本地 WebAudio 兜底；window.GinAudio 优先） ----------
+  function sfx(name) {
+    if (window.GinAudio && typeof GinAudio.playSfx === 'function') {
+      try { GinAudio.playSfx(name); return true; } catch (e) {}
+    }
+    return false;
+  }
+  function sfxVoice(name) {
+    if (window.GinAudio && typeof GinAudio.playVoice === 'function') {
+      try { GinAudio.playVoice(name); } catch (e) {}
+    }
+  }
+  // 本地 WebAudio 蜂鸣（triangle，增益 0.06），GinAudio 缺失/禁用时兜底
+  function beepLocal(freq, dur) {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      var ac = beepLocal._ac || (beepLocal._ac = new AC());
+      if (ac.state === 'suspended') { try { ac.resume(); } catch (e) {} }
+      var o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'triangle'; o.frequency.value = freq;
+      var t0 = ac.currentTime;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.06, t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(ac.destination);
+      o.start(t0); o.stop(t0 + dur + 0.02);
+    } catch (e) {}
+  }
+  // 低沉下行死亡音（本地兜底）
+  function deathCueLocal() {
+    [330, 247, 196, 147].forEach(function (f, i) { setTimeout(function () { beepLocal(f, 0.16); }, i * 80); });
+  }
+  // 胜利号角（仅在 GinAudio 启用时，遵循全局静音开关）
+  function fanfare() {
+    if (!(window.GinAudio && GinAudio.isEnabled && GinAudio.isEnabled())) return;
+    [523, 659, 784, 1047].forEach(function (f, i) { setTimeout(function () { beepLocal(f, 0.12); }, i * 90); });
+  }
+  // 金币迸发粒子
+  function spawnCoinBurst(x, y, n) {
+    n = n || 8;
+    for (var i = 0; i < n; i++) {
+      var ang = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.1;
+      var sp = 90 + Math.random() * 150;
+      particles.push({ x: x, y: y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 40,
+        t: 0, dur: 0.6 + Math.random() * 0.4, r: 3 + Math.random() * 3 });
+    }
+  }
+
   // ---------- 关卡流程 ----------
   function startLevel(lv) {
     curLevel = lv;
@@ -219,6 +272,7 @@
     player.x = 60; player.y = GY - player.h; player.vy = 0; player.onGround = true;
     player.hp = player.maxhp; player.cd = 0; player.swing = 0; player.facing = 1;
     enemies = []; boss = null; phase = 'waves'; wave = 0; score = 0; floats = []; shake = 0;
+    particles = []; whiteFlash = 0; _loseSfx = false;
     startWave(0);
     screen = 'playing';
   }
@@ -250,6 +304,7 @@
       atkTimer: 2.0, windup: 0, windupMax: 0.6,
       dir: -1, flash: 0
     };
+    whiteFlash = 0.45;                 // Boss 登场白屏闪光
   }
 
   function winLevel() {
@@ -259,6 +314,8 @@
     lastReward = r.total; lastBreak = { clear: r.clear, boss: r.bossBonus };
     addCoins(lastReward);
     if (curLevel >= unlocked) { unlocked = Math.min(LEVELS, curLevel + 1); saveProgress(); }
+    fanfare();                                    // 胜利号角
+    spawnCoinBurst(W / 2, HUD_H + 40, 14);         // 通关金币迸发
     toast = { text: '金币 +' + lastReward, t: 2.4 };
   }
 
@@ -271,6 +328,7 @@
     if (player.cd > 0) return;
     player.cd = ATK_CD;
     player.swing = ATK_SWING;
+    if (!sfx('sfx_merge')) beepLocal(900, 0.06);   // 平A 斩击音
     var hbx = player.facing > 0 ? player.x + player.w : player.x - ATK_REACH;
     var hby = player.y - 10, hbh = player.h + 12;
     for (var i = enemies.length - 1; i >= 0; i--) {
@@ -289,7 +347,10 @@
     var e = enemies[i];
     enemies.splice(i, 1);
     score += 10;
+    if (!sfx('sfx_down')) deathCueLocal();         // 击杀音
+    spawnCoinBurst(e.x + e.w / 2, e.y, 8);         // 金币迸发
     floats.push({ x: e.x + e.w / 2, y: e.y, t: 0, dur: 0.9, text: '+10' });
+    floats.push({ x: e.x + e.w / 2, y: e.y - 8, t: 0, dur: 1.0, text: '+金币', color: '#ffd23a' });
   }
 
   function aabbRect(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -339,6 +400,8 @@
         } else {
           spawnBoss(); phase = 'boss';
           toast = { text: '⚔ ' + charName(bossTier()) + ' 出现！', t: 1.8 };
+          sfxVoice(charName(bossTier()));          // Boss 登场台词
+          if (!sfx('sfx_boss')) beepLocal(150, 0.25);
         }
       }
     }
@@ -349,13 +412,20 @@
     // Boss 更新
     if (phase === 'boss' && boss) {
       updateBoss(dt);
-      if (boss.hp <= 0) { boss = null; winLevel(); }
+      if (boss.hp <= 0) { boss = null; if (!sfx('sfx_boss_down')) deathCueLocal(); winLevel(); }
     }
 
     // 玩家阵亡（仅在仍处于战斗中时判定，避免与同帧胜利冲突）
     if (screen === 'playing' && player.hp <= 0) { player.hp = 0; screen = 'lose'; }
 
     if (shake > 0) shake = Math.max(0, shake - dt * 2.2);
+    if (whiteFlash > 0) whiteFlash = Math.max(0, whiteFlash - dt * 1.6);
+    for (var pi = particles.length - 1; pi >= 0; pi--) {
+      var pt = particles[pi];
+      pt.t += dt; pt.vy += 520 * dt;
+      pt.x += pt.vx * dt; pt.y += pt.vy * dt;
+      if (pt.t >= pt.dur) particles.splice(pi, 1);
+    }
     if (toast) { toast.t -= dt; if (toast.t <= 0) toast = null; }
     for (var f = floats.length - 1; f >= 0; f--) {
       floats[f].t += dt;
@@ -631,11 +701,26 @@
       ctx.lineTo(p.x + p.w / 2 + dir * 48, p.y - 18);
       ctx.stroke();
     }
-    // 挥击高亮
+    // 挥击高亮 + 金色斩击弧
     if (p.swing > 0) {
-      ctx.fillStyle = 'rgba(247,215,116,0.22)';
+      var prog = p.swing / ATK_SWING;            // 1→0（挥击进度）
       var hbx = p.facing > 0 ? p.x + p.w : p.x - ATK_REACH;
+      ctx.fillStyle = 'rgba(247,215,116,0.22)';
       ctx.fillRect(hbx, p.y - 10, ATK_REACH, p.h + 12);
+      var cx = p.facing > 0 ? p.x + p.w : p.x;
+      var cy = p.y + p.h / 2;
+      var rad = ATK_REACH * 0.95;
+      var a0 = p.facing > 0 ? -0.95 : Math.PI + 0.95;
+      var a1 = p.facing > 0 ? 0.95 : Math.PI - 0.95;
+      var off = (1 - prog) * 0.7;
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = Math.max(0.15, prog);
+      ctx.strokeStyle = 'rgba(255,210,58,0.6)'; ctx.lineWidth = 9;
+      ctx.beginPath(); ctx.arc(cx, cy, rad, a0 + off, a1 - off); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 3.5;
+      ctx.beginPath(); ctx.arc(cx, cy, rad, a0 + off, a1 - off); ctx.stroke();
+      ctx.restore();
     }
   }
 
@@ -748,7 +833,7 @@
     for (var i = 0; i < floats.length; i++) {
       var f = floats[i], pp = f.t / f.dur;
       ctx.globalAlpha = 1 - pp;
-      text(f.text, f.x, f.y - 8 - pp * 30, 15, '#ffe58a', 'center', '800');
+      text(f.text, f.x, f.y - 8 - pp * 30, f.size || 15, f.color || '#ffe58a', 'center', '800');
     }
     ctx.globalAlpha = 1;
   }
@@ -762,6 +847,21 @@
     drawFloats();
     drawHUD();
     drawControls();
+    // 金币粒子
+    for (var pi = 0; pi < particles.length; pi++) {
+      var pt = particles[pi], pp = 1 - pt.t / pt.dur;
+      ctx.globalAlpha = Math.max(0, pp);
+      ctx.fillStyle = PAL.gold2;
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#8a6a1f';
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.r * 0.5, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    // Boss 登场白屏闪光
+    if (whiteFlash > 0) {
+      ctx.save(); ctx.globalAlpha = Math.min(0.7, whiteFlash);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H); ctx.restore();
+    }
     if (toast) {
       ctx.globalAlpha = Math.min(1, toast.t * 2);
       var tw = 280, th = 36, tx = (W - tw) / 2, ty = HUD_H + 14;
@@ -845,6 +945,7 @@
   }
 
   function drawLose() {
+    if (!_loseSfx) { _loseSfx = true; if (!sfx('sfx_lose')) deathCueLocal(); }  // 失败音效只播一次
     drawBackground();
     ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(0, 0, W, H);
     var pw = 460, ph = 180, px = (W - pw) / 2, py = 92;
