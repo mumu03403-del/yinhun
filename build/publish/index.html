@@ -213,6 +213,10 @@
   var HOME_BTN = { x: 12, y: 8, w: 92, h: 30 };                 // 返回首页（棋盘区左上角）
   var COLL_BTN = { x: 660, y: 14, w: 64, h: 44 };               // 图鉴（HUD 内）
   var MUTE_BTN = { x: 736, y: 14, w: 56, h: 44 };               // 音乐（HUD 内，与图鉴间距 >= 12px）
+  // 新手引导（B2）：首次进入展示一次，点击「开始游戏」后写入 localStorage 不再弹出
+  var TUT_BTN = { x: W / 2 - 90, y: 296, w: 180, h: 46 };
+  var tutDone = false; try { tutDone = localStorage.getItem('gin_tut_v1') === '1'; } catch (e) {}
+  var showTut = !tutDone;
   var SPAWN_BTN  = { x: PX0,      y: 96,  w: 152, h: 44 };      // 招募 +1
   var UNLOCK_BTN = { x: PX1 - 152, y: 96,  w: 152, h: 44 };     // 解锁第 N 行
   var LEGEND_BTN = { x: PX0,      y: 152, w: PW,  h: 38 };      // 档位产出表
@@ -641,7 +645,7 @@
 
   // 高级招募：消耗 20 金币，刷出「最高档位 - 2」的单位
   function spawnHighTier() {
-    var tier = Math.max(1, state.highestTier - 2);
+    var tier = Math.max(2, state.highestTier - 2);   // 保底 2 档，避免早中期 20 金只出 1 档（B3）
     if (state.coins < 20) {
       if (window.GinAudio) GinAudio.locked();
       toast = { text: '金币不足，高级招募需 20 金币', t: 2.0 };
@@ -1227,6 +1231,14 @@
     pointer.settled = false;
     pointer.cell = -1;
 
+    // 新手引导：首次点击任意处关闭并标记为已读（B2）
+    if (showTut) {
+      if (window.GinAudio) GinAudio.click();
+      showTut = false;
+      try { localStorage.setItem('gin_tut_v1', '1'); } catch (e) {}
+      return;
+    }
+
     if (modal) { if (window.GinAudio) GinAudio.click(); modal = null; return; }
 
     if (gomokuOpen) {
@@ -1710,6 +1722,12 @@
     }
     if (!isFinite(s) || s < 0.2) s = 0.2;
     if (!isFinite(alpha)) alpha = 1;
+
+    // 极轻 idle 呼吸（非晃动，仅无合并/生成动画时）：给棋盘一点生命感（B5）
+    if ((!a || !a.kind)) {
+      var breathe = 1 + Math.sin(clock * 1.6 + i * 0.7) * 0.018;
+      s *= breathe;
+    }
 
     var color = TIER_COLORS[tier - 1];
     var size = (CELL - 8) * s;
@@ -2265,6 +2283,20 @@
       if (gomokuScreen === 'menu') drawGomokuMenu(); else drawGomoku();
     }
     if (brawlerOpen) drawBrawler();
+    if (showTut) drawTutorial();
+  }
+
+  function drawTutorial() {
+    ctx.fillStyle = 'rgba(6,6,12,0.84)';
+    ctx.fillRect(0, 0, W, H);
+    var pw = 580, ph = 296, px = (W - pw) / 2, py = (H - ph) / 2 - 8;
+    popupFrame(px, py, pw, ph, '玩法指引');
+    text('拖拽两个相同单位合并 → 升档并解锁图鉴', px + pw / 2, py + 70, 14, '#e7ecf5', 'center', '600');
+    text('点「高级招募」获取高星单位（消耗 20 金币）', px + pw / 2, py + 104, 14, '#e7ecf5', 'center', '600');
+    text('单位自动放置并产出金币，离线也累计收益', px + pw / 2, py + 138, 14, '#e7ecf5', 'center', '600');
+    text('满级单位长按可变现金币 · 解锁新行扩充棋盘', px + pw / 2, py + 172, 14, '#e7ecf5', 'center', '600');
+    text('棋盘单位会轻轻呼吸，静止不晃动', px + pw / 2, py + 206, 12, '#9a9ab0', 'center', '500');
+    drawButton(TUT_BTN, '开始游戏', '#e8c15a');
   }
 
   function drawParticles() {

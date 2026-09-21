@@ -22,6 +22,7 @@ window.GinAudio = (function(){
       if(!Ctx) return null;
       if(!ctx) ctx=new Ctx();
       if(ctx.state==='suspended'){ try{ctx.resume();}catch(e){} }
+      startBgm();
       return ctx;
     }catch(e){ return null; }
   }
@@ -34,7 +35,7 @@ window.GinAudio = (function(){
     }
     return cache[name];
   }
-  function setEnabled(v){ enabled=!!v; try{localStorage.setItem(KEY, enabled?'1':'0');}catch(e){} if(!enabled){ for(const k in cache){ try{cache[k].pause();}catch(e){} } } }
+  function setEnabled(v){ enabled=!!v; try{localStorage.setItem(KEY, enabled?'1':'0');}catch(e){} if(!enabled){ for(const k in cache){ try{cache[k].pause();}catch(e){} } stopBgm(); } }
   function isEnabled(){ return enabled; }
 
   // ---- procedural fallbacks (used when mp3 is unavailable) ----
@@ -98,5 +99,28 @@ window.GinAudio = (function(){
   function locked(){ note(160,0.12,0,'square',0.05); note(140,0.14,0.12,'square',0.05); }
   function fanfare(){ [523,659,784,1047].forEach(function(f,i){ note(f,0.12,i*0.09); }); }
   function lose(){ [392,330,262,196].forEach(function(f,i){ note(f,0.16,i*0.13); }); }
-  return { setEnabled:setEnabled, isEnabled:isEnabled, playSfx:playSfx, playVoice:playVoice, beep:beep, sweep:sweep, blip:blip, click:click, jump:jump, hit:hit, unlock:unlock, locked:locked, fanfare:fanfare, lose:lose, KEY:KEY };
+
+  // ---- 程序化环境 BGM（B4：无需音频资产，循环柔和五声音阶琶音）----
+  var bgmTimer = null, bgmStep = 0;
+  var BGM_NOTES = [196.00, 261.63, 293.66, 329.63, 392.00, 329.63, 293.66, 261.63]; // G 大调五声，低音区
+  function startBgm(){
+    if (!enabled || bgmTimer) return;
+    var c = ac(); if (!c) return;
+    bgmTimer = setInterval(function(){
+      if (!enabled) { stopBgm(); return; }
+      var c2 = ac(); if (!c2) return;
+      var f = BGM_NOTES[bgmStep % BGM_NOTES.length]; bgmStep++;
+      var t = c2.currentTime;
+      var o = c2.createOscillator(), g = c2.createGain();
+      o.type = 'triangle'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.028, t + 0.06);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
+      o.connect(g); g.connect(c2.destination);
+      o.start(t); o.stop(t + 0.46);
+    }, 520);
+  }
+  function stopBgm(){ if (bgmTimer) { clearInterval(bgmTimer); bgmTimer = null; } }
+
+  return { setEnabled:setEnabled, isEnabled:isEnabled, playSfx:playSfx, playVoice:playVoice, beep:beep, sweep:sweep, blip:blip, click:click, jump:jump, hit:hit, unlock:unlock, locked:locked, fanfare:fanfare, lose:lose, startBgm:startBgm, stopBgm:stopBgm, KEY:KEY };
 })();

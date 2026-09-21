@@ -110,7 +110,7 @@
   var curLevel = 1;
   var unlocked = 1;
   var player = { x: 60, y: GY - 70, w: 42, h: 70, vy: 0, onGround: true, facing: 1,
-                 hp: 120, maxhp: 120, cd: 0, swing: 0, rngCd: 0 };
+                 hp: 120, maxhp: 120, cd: 0, swing: 0, rngCd: 0, hurt: 0 };
   var levelCfg = null;
   var enemies = [];
   var boss = null;
@@ -125,6 +125,10 @@
   var toast = null;
   var shake = 0;
   var whiteFlash = 0;       // Boss 登场白屏闪光
+  var hitStop = 0;          // 顿帧：命中瞬间冻结一小段时间，增强打击感（B1）
+  // 新手引导（B2）：首次进入战斗展示一次，点击关闭并写入 localStorage
+  var actTutDone = false; try { actTutDone = localStorage.getItem('gin_tut_act_v1') === '1'; } catch (e) {}
+  var showActTut = !actTutDone;
   var particles = [];       // 金币迸发粒子
   var _loseSfx = false;     // 失败音效只播一次
   var lastReward = 0;
@@ -395,7 +399,7 @@
       var kd = player.facing > 0 ? 1 : -1;
       boss.kbx = kd * 70; boss.kbT = 0.12;                 // Boss 轻微击退
     }
-    if (hit) gHit();                              // 攻击命中音效
+    if (hit) { hitStop = 0.05; gHit(); }          // 攻击命中：顿帧 + 命中音效（B1）
   }
 
   function tryRanged() {
@@ -430,6 +434,9 @@
   function update(dt) {
     updateTransition(dt);                  // 黑场转场（任何界面都推进）
     if (screen !== 'playing') return;
+
+    // 顿帧（hit-stop）：命中瞬间冻结极短时间，强化打击重量感（B1）
+    if (hitStop > 0) { hitStop = Math.max(0, hitStop - dt); return; }
 
     if (player.cd > 0) player.cd = Math.max(0, player.cd - dt);
     if (player.swing > 0) player.swing = Math.max(0, player.swing - dt);
@@ -488,17 +495,17 @@
         for (var ei = enemies.length - 1; ei >= 0; ei--) {
           var en = enemies[ei];
           if (aabbRect(pp.x, pp.y, RNG_R, RNG_R, en.x, en.y, en.w, en.h)) {
-            en.hp -= pp.dmg; en.flash = 0.12;
+            en.hp -= pp.dmg; en.flash = 0.12; hitStop = 0.05;
             if (en.hp <= 0) killMob(ei);
             removed = true; break;
           }
         }
         if (!removed && boss && aabbRect(pp.x, pp.y, RNG_R, RNG_R, boss.x, boss.y, boss.w, boss.h)) {
-          boss.hp -= pp.dmg; boss.flash = 0.12; shake = Math.max(shake, 0.2); removed = true;
+          boss.hp -= pp.dmg; boss.flash = 0.12; shake = Math.max(shake, 0.2); hitStop = 0.05; removed = true;
         }
       } else if (pp.from === 'enemy') {
         if (aabbRect(pp.x, pp.y, RNG_R, RNG_R, player.x, player.y, player.w, player.h)) {
-          player.hp -= pp.dmg; removed = true;
+          player.hp -= pp.dmg; player.hurt = 0.14; removed = true;
         }
       }
       if (removed || pp.x < 0 || pp.x > W || pp.t >= pp.dur) projectiles.splice(pi2, 1);
@@ -515,6 +522,7 @@
 
     if (shake > 0) shake = Math.max(0, shake - dt * 2.2);
     if (whiteFlash > 0) whiteFlash = Math.max(0, whiteFlash - dt * 1.6);
+    if (player.hurt > 0) player.hurt = Math.max(0, player.hurt - dt);
     for (var pi = particles.length - 1; pi >= 0; pi--) {
       var pt = particles[pi];
       pt.t += dt; pt.vy += 520 * dt;
@@ -547,6 +555,7 @@
     if (aabb(e, player)) {
       if (dir < 0) e.x = player.x + player.w - 2; else e.x = player.x - e.w - 2;
       player.hp -= e.dps * dt;
+      player.hurt = 0.14;
       shake = Math.max(shake, 0.12);
       e.atkT = 0.22;               // 命中玩家时挥击动作
     }
@@ -566,7 +575,7 @@
       b.windup -= dt;
       if (b.windup <= 0) {
         var range = b.w / 2 + player.w / 2 + 30;
-        if (Math.abs(px - bx) <= range) { player.hp -= b.atkDmg; shake = 0.7; b.strike = 0.25;
+        if (Math.abs(px - bx) <= range) { player.hp -= b.atkDmg; shake = 0.7; hitStop = 0.04; player.hurt = 0.16; b.strike = 0.25;
           floats.push({ x: player.x + player.w / 2, y: player.y, t: 0, dur: 1.0, text: '-' + Math.round(b.atkDmg) }); }
         b.atkTimer = 2.2;
       }
@@ -838,6 +847,16 @@
       ctx.beginPath(); ctx.arc(cx, cy, rad, a0 + off, a1 - off); ctx.stroke();
       ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 3.5;
       ctx.beginPath(); ctx.arc(cx, cy, rad, a0 + off, a1 - off); ctx.stroke();
+      ctx.restore();
+    }
+    // 受击红闪（B6）：被命中时叠加半透明红色，强化受伤反馈
+    if (p.hurt > 0) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(0.55, p.hurt * 3.2);
+      ctx.fillStyle = '#ff3b3b';
+      ctx.beginPath();
+      ctx.ellipse(bx + p.w / 2, p.y + p.h / 2, p.w / 2 + 8, p.h / 2 + 10, 0, 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
     }
   }
@@ -1132,12 +1151,25 @@
     else if (screen === 'playing') drawPlaying();
     else if (screen === 'win') { drawPlaying(); drawWin(); }
     else if (screen === 'lose') { drawPlaying(); drawLose(); }
+    if (showActTut) drawActTutorial();
     // 黑场转场（覆盖在所有内容之上）
     if (blackAlpha > 0) {
       ctx.save(); ctx.globalAlpha = blackAlpha; ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, W, H); ctx.restore();
     }
     ctx.restore();
+  }
+
+  function drawActTutorial() {
+    ctx.fillStyle = 'rgba(6,6,12,0.84)';
+    ctx.fillRect(0, 0, W, H);
+    var pw = 560, ph = 280, px = (W - pw) / 2, py = (H - ph) / 2 - 8;
+    popupFrame(px, py, pw, ph, '战斗指引');
+    text('左右移动，点击或自动平A 攻击敌人', px + pw / 2, py + 66, 14, '#e7ecf5', 'center', '600');
+    text('点「远程」按钮或按 K 发射弹体，可隔空输出', px + pw / 2, py + 100, 14, '#e7ecf5', 'center', '600');
+    text('击败所有波次与 Boss 即通关，角色血量随关卡提升', px + pw / 2, py + 134, 14, '#e7ecf5', 'center', '600');
+    text('受击会红闪、命中会顿帧——注意走位', px + pw / 2, py + 168, 13, '#9a9ab0', 'center', '500');
+    drawButton({ x: W / 2 - 90, y: py + ph - 60, w: 180, h: 46 }, '开始战斗', '#e8c15a');
   }
 
   // ---------- 输入处理 ----------
@@ -1180,7 +1212,15 @@
       if (hitButton(p, LOSE_BACK, 44)) { gClick(); location.href = 'home.html'; return; }
       return;
     }
-    if (screen === 'playing') handlePlayDown(p, ev.pointerId);
+    if (screen === 'playing') {
+      if (showActTut) {
+        showActTut = false;
+        try { localStorage.setItem('gin_tut_act_v1', '1'); } catch (e) {}
+        if (window.GinAudio) GinAudio.click();
+        return;
+      }
+      handlePlayDown(p, ev.pointerId);
+    }
   });
 
   cv.addEventListener('pointermove', function (ev) { ev.preventDefault(); });
