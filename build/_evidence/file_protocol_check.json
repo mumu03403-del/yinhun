@@ -1,0 +1,15 @@
+{
+  "result": {
+    "ready": true,
+    "tier1": 4,
+    "tier2": 1,
+    "cps": 6,
+    "coins0": 9.099599999999997,
+    "coins1": 16.39919999999997,
+    "idleWorks": true,
+    "lsOk": true,
+    "lsMsg": "",
+    "merges": 1
+  },
+  "pageErrors": []
+}

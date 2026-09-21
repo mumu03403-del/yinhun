@@ -1,0 +1,26 @@
+{
+  "appid": "wx0000000000000000",
+  "projectname": "merge-samurai-minigame",
+  "description": "合并武士·放置图鉴 —— 微信小游戏（H5 主线 + 薄适配层）",
+  "compileType": "game",
+  "libVersion": "2.32.3",
+  "miniprogramRoot": "./",
+  "srcMiniprogramRoot": "./",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": false,
+    "minified": false,
+    "urlCheck": false,
+    "coverView": false,
+    "autoAudits": false,
+    "uglifyFileName": false,
+    "ignoreUploadUnusedFiles": true
+  },
+  "packOptions": {
+    "ignore": [
+      { "type": "folder", "value": "_harness" },
+      { "type": "folder", "value": "_evidence" }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "tag": "v110_",
+  "result": {
+    "ready": true,
+    "tier1": 4,
+    "tier2": 1,
+    "cps": 6,
+    "coins0": 4.3001999999999985,
+    "coins1": 11.499599999999994,
+    "idleWorks": true,
+    "lsOk": true,
+    "lsMsg": "",
+    "merges": 1,
+    "modalAtStart": false,
+    "settleOk": true,
+    "settleGain": 7290,
+    "lastCard": true,
+    "minContrast": 4.82
+  },
+  "pageErrors": []
+}

@@ -1,0 +1,229 @@
+{
+  "suite": "minigame-adapter-wx",
+  "version": "minigame-adapter-0.1.0",
+  "mode": "node",
+  "startedAt": "2026-09-20T14:35:16.366Z",
+  "finishedAt": "2026-09-20T14:35:17.472Z",
+  "durationMs": 1104,
+  "total": 24,
+  "passed": 24,
+  "failed": 0,
+  "skipped": 0,
+  "pageErrors": [],
+  "results": [
+    {
+      "id": "B01",
+      "name": "单指 start→move→end 依次产出 down/move/up，坐标正确",
+      "ok": true,
+      "skipped": false,
+      "detail": "down/move/up 各 1 次，坐标 (100,200)/(130,240)/(130,240)",
+      "durationMs": 2
+    },
+    {
+      "id": "B02",
+      "name": "touchend 只读 changedTouches：touches 为空或只剩别的手指时仍取对坐标",
+      "ok": true,
+      "skipped": false,
+      "detail": "touches 为空 / 只剩别手指两种情况下，up 坐标都取自 changedTouches",
+      "durationMs": 0
+    },
+    {
+      "id": "B03",
+      "name": "拖拽中第二根手指落下 → 不产生额外 down，其 move/end 也被忽略",
+      "ok": true,
+      "skipped": false,
+      "detail": "down=1 move=1 up=1，忽略 down/move/end 各 1",
+      "durationMs": 0
+    },
+    {
+      "id": "B04",
+      "name": "touchcancel → 产出 up 且带 cancel 标记",
+      "ok": true,
+      "skipped": false,
+      "detail": "cancel → up(cancel=true)，tracking 已释放",
+      "durationMs": 1
+    },
+    {
+      "id": "B05",
+      "name": "按住 500ms 不动 → down 立即可得、期间无额外事件、随后 up",
+      "ok": true,
+      "skipped": false,
+      "detail": "down 同步产出(延迟 0ms)，520ms 静默，随后 up",
+      "durationMs": 523
+    },
+    {
+      "id": "B06",
+      "name": "手指抬起后新手指可以重新开始（activeId 正确释放）",
+      "ok": true,
+      "skipped": false,
+      "detail": "第二次手势正常开始，down 计数 2",
+      "durationMs": 0
+    },
+    {
+      "id": "B07",
+      "name": "clientX/clientY → 画布局部坐标换算（画布不在原点时）",
+      "ok": true,
+      "skipped": false,
+      "detail": "局部换算 (100,200)-(30,50)=(70,150)；transform 后 (40,60)",
+      "durationMs": 0
+    },
+    {
+      "id": "B08",
+      "name": "changedTouches 缺失时的抬手兜底：用最后一次已知坐标产出 up",
+      "ok": true,
+      "skipped": false,
+      "detail": "无坐标的 end 仍产出 up(coordFallback=true)，坐标取最后一次已知值",
+      "durationMs": 0
+    },
+    {
+      "id": "B09",
+      "name": "抬起的是别的手指时不产生 up（继续保持跟踪）",
+      "ok": true,
+      "skipped": false,
+      "detail": "别的手指抬起被忽略，自己的手指抬起才 up",
+      "durationMs": 1
+    },
+    {
+      "id": "P01",
+      "name": "createCanvas 第一次调用返回上屏画布，getContext('2d') 可用且被缓存",
+      "ok": true,
+      "skipped": false,
+      "detail": "上屏画布 + 离屏画布判定正确，上下文缓存生效",
+      "durationMs": 0
+    },
+    {
+      "id": "P02",
+      "name": "存储走 wx.setStorageSync / getStorageSync / removeStorageSync",
+      "ok": true,
+      "skipped": false,
+      "detail": "set/get/remove 往返正确，且真实穿过 wx 存储 API",
+      "durationMs": 0
+    },
+    {
+      "id": "P03",
+      "name": "生命周期 onShow / onHide 注册后被 mock 触发",
+      "ok": true,
+      "skipped": false,
+      "detail": "show=1 hide=2，多次 onHide 都穿透到业务回调",
+      "durationMs": 0
+    },
+    {
+      "id": "P04",
+      "name": "设备信息来自 wx.getSystemInfoSync；上屏画布 rect 恒为原点全屏",
+      "ok": true,
+      "skipped": false,
+      "detail": "pixelRatio=2 / 375x812 / safeArea 就绪；rect 原点全屏",
+      "durationMs": 0
+    },
+    {
+      "id": "P05",
+      "name": "onTouch* 注册后 mock 派发的数组式事件能穿透到回调",
+      "ok": true,
+      "skipped": false,
+      "detail": "4 类触摸事件全部穿透，touchend 的 touches 为空数组",
+      "durationMs": 0
+    },
+    {
+      "id": "P06",
+      "name": "重复订阅同一类别只向 wx 注册一次（不会叠加回调）",
+      "ok": true,
+      "skipped": false,
+      "detail": "wx 侧注册 1 个，业务回调 3 个各触发 1 次",
+      "durationMs": 0
+    },
+    {
+      "id": "P07",
+      "name": "静态零残留：wx 侧三个文件不含任何 BOM/DOM/Web 存储引用",
+      "ok": true,
+      "skipped": false,
+      "detail": "3 个文件 x 10 条规则，剔除注释后 0 命中（未剔除注释时有 3 处命中：js/input-bridge.js 原始命中 浏览器全局对象 x1 / js/input-bridge.js 原始命中 文档对象 x1 / js/input-bridge.js 原始命中 Web 存储 x1，均位于说明性注释中）",
+      "durationMs": 2
+    },
+    {
+      "id": "I01",
+      "name": "boot 后画布像素尺寸与 setTransform 换算正确",
+      "ok": true,
+      "skipped": false,
+      "detail": "dpr=2 scale=0.936 canvas=750x1624 setTransform=(1.872,0,0,1.872,24,51.968)",
+      "durationMs": 2
+    },
+    {
+      "id": "I02",
+      "name": "单指 tap 经全链路口径到核心，逻辑坐标落在正确格心",
+      "ok": true,
+      "skipped": false,
+      "detail": "屏幕坐标 -> 逻辑坐标往返无损，命中 0 号格 (47.5,163)",
+      "durationMs": 1
+    },
+    {
+      "id": "I03",
+      "name": "R1 验收：down(A) → down(B) → up(A) 不产生幽灵 down/结算",
+      "ok": true,
+      "skipped": false,
+      "detail": "down=1 up=1 ignoredDown=1，满级单位未被幽灵操作吃掉",
+      "durationMs": 0
+    },
+    {
+      "id": "I04",
+      "name": "满级单位长按 500ms 经适配层正常结算（不被适配层吃掉）",
+      "ok": true,
+      "skipped": false,
+      "detail": "长按 560ms → 结算 1 次、格释放、金币 +7290；抬手不再二次结算",
+      "durationMs": 568
+    },
+    {
+      "id": "I05",
+      "name": "拖拽超过 10px 阈值 → 长按被取消并完成一次合并",
+      "ok": true,
+      "skipped": false,
+      "detail": "阈值触发 + 合并成功：1 档 + 1 档 → 2 档",
+      "durationMs": 1
+    },
+    {
+      "id": "I06",
+      "name": "onHide：静默收起手势 + 走 wx.setStorageSync 落盘",
+      "ok": true,
+      "skipped": false,
+      "detail": "onHide → 手势收起到 cancel + 存档落盘 (cells[3]=2, coins=1234)",
+      "durationMs": 1
+    },
+    {
+      "id": "I07",
+      "name": "确定性推进 60 帧不抛异常，渲染调用随之增长",
+      "ok": true,
+      "skipped": false,
+      "detail": "60 帧正常渲染，ctx 调用 +1320 次",
+      "durationMs": 1
+    },
+    {
+      "id": "I08",
+      "name": "底部安全区（safeArea）参与视图换算，避免 UI 掉进手势条",
+      "ok": true,
+      "skipped": false,
+      "detail": "safeBottom=32，oy 上移 16，输入与渲染共用同一 view",
+      "durationMs": 1
+    }
+  ],
+  "notes": [
+    "本套件用 mock wx 真实执行 platform-wx.js，而不是纯静态检查。",
+    "本机未安装微信开发者工具，因此真机像素/性能类风险（阴影、渐变、帧率）不在本套件覆盖范围内。"
+  ],
+  "frozenGuard": {
+    "expectedSha256": "e6d9b32c122e99023f97a2c4834b5f223278afdb3a3a1d83aa9379cab2208f54",
+    "files": [
+      {
+        "path": "build/h5-fallback/index.html",
+        "sha256Before": "e6d9b32c122e99023f97a2c4834b5f223278afdb3a3a1d83aa9379cab2208f54",
+        "sha256After": "e6d9b32c122e99023f97a2c4834b5f223278afdb3a3a1d83aa9379cab2208f54"
+      },
+      {
+        "path": "build/publish/index.html",
+        "sha256Before": "e6d9b32c122e99023f97a2c4834b5f223278afdb3a3a1d83aa9379cab2208f54",
+        "sha256After": "e6d9b32c122e99023f97a2c4834b5f223278afdb3a3a1d83aa9379cab2208f54"
+      }
+    ],
+    "expectBothFilesIdentical": true,
+    "allMatchExpected": true,
+    "intact": true
+  }
+}

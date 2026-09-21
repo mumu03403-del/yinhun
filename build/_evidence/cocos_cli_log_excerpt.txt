@@ -1,0 +1,94 @@
+原始日志总大小: 263930122 字节 (251.7 MB)
+===== HEAD (前 6000 字节) =====
+
+init **** success
+Arguments:
+  C:\ProgramData\cocos\editors\Creator\3.8.8\CocosCreator.exe: true
+  project: C:/Users/37615/Projects/game-build-tmp
+  build: platform=web-mobile;debug=true
+  no-sandbox: true
+  disable-gpu: true
+  in-process-gpu: true
+  disable-software-rasterizer: true
+  disable-gpu-compositing: true
+  dev: false
+  home: C:\Users\37615\.CocosCreator
+ 
+This error originated either by throwing inside of an async function without a catch block, or by rejecting a promise which was not handled with .catch(). The promise rejected with the reason:
+Error: Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    at Object.processEvent (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\electron\main\integrations\gpu-context.js:23:52)
+    at C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\core\build\cjs\integration.js:119:54
+    at Object.getEventDefaults (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\electron\main\context.js:36:23)
+    at runNextTicks (node:internal/process/task_queues:60:5)
+    at process.processImmediate (node:internal/timers:449:9)
+    at async Immediate.<anonymous> (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\electron\main\integrations\sentry-minidump\index.js:40:24)
+    at console.error (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@editor\sentry\dist\main\main.ccc:41:45)
+    at C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\node\build\cjs\integrations\onunhandledrejection.js:76:15
+    at Module.consoleSandbox (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\core\build\cjs\utils-hoist\logger.js:51:12)
+    at handleRejection (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\node\build\cjs\integrations\onunhandledrejection.js:74:10)
+    at process.sendUnhandledPromise (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\node\build\cjs\integrations\onunhandledrejection.js:57:5)
+    at process.emit (node:events:531:35)
+    at emitUnhandledRejection (node:internal/process/promises:250:13)
+    at warnWithErrorCodeUnhandledRejectionsMode (node:internal/process/promises:404:19)
+    at processPromiseRejections (node:internal/process/promises:470:17)
+    at processTicksAndRejections (node:internal/process/task_queues:96:32)
+Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    at Object.processEvent (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\electron\main\integrations\gpu-context.js:23:52)
+    at C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\core\build\cjs\integration.js:119:54
+    at Object.getEventDefaults (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\electron\main\context.js:36:23)
+    at runNextTicks (node:internal/process/task_queues:60:5)
+    at process.processImmediate (node:internal/timers:449:9)
+    at async Immediate.<anonymous> (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\electron\main\integrations\sentry-minidump\index.js:40:24)
+This error originated either by throwing inside of an async function without a catch block, or by rejecting a promise which was not handled with .catch(). The promise rejected with the reason:
+Error: Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    at Object.processEvent (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\electron\main\integrations\gpu-context.js:23:52)
+    at C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\core\build\cjs\integration.js:119:54
+    at Object.getEventDefaults (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\electron\main\context.js:36:23)
+    at runNextTicks (node:internal/process/task_queues:60:5)
+    at process.processImmediate (node:internal/timers:449:9)
+    at async Immediate.<anonymous> (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\electron\main\integrations\sentry-minidump\index.js:40:24)
+    at console.error (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@editor\sentry\dist\main\main.ccc:41:45)
+    at C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\node\build\cjs\integrations\onunhandledrejection.js:76:15
+    at Module.consoleSandbox (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\core\build\cjs\utils-hoist\logger.js:51:12)
+    at handleRejection (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\node\build\cjs\integrations\onunhandledrejection.js:74:10)
+    at process.sendUnhandledPromise (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\node\build\cjs\integrations\onunhandledrejection.js:57:5)
+    at process.emit (node:events:531:35)
+    at emitUnhandledRejection (node:internal/process/promises:250:13)
+    at warnWithErrorCodeUnhandledRejectionsMode (node:internal/process/promises:404:19)
+    at processPromiseRejections (node:internal/process/promises:470:17)
+    at processTicksAndRejections (node:internal/process/task_queues:96:32)
+Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    at Object.processEvent (C:\ProgramData\cocos\editors\Creator\3.8.8\resources\app.asar\node_modules\@sentry\electron\main\integrations\gpu-context.js:23:52)
+    at C:\ProgramData\cocos\editors\Creator\3.8.8
+===== TAIL (后 20000 字节，已按节点去重折叠) =====
+    ...(重复的 Sentry/堆栈行已折叠)...
+Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    ...(重复的 Sentry/堆栈行已折叠)...
+This error originated either by throwing inside of an async function without a catch block, or by rejecting a promise which was not handled with .catch(). The promise rejected with the reason:
+Error: Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    ...(重复的 Sentry/堆栈行已折叠)...
+Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    ...(重复的 Sentry/堆栈行已折叠)...
+This error originated either by throwing inside of an async function without a catch block, or by rejecting a promise which was not handled with .catch(). The promise rejected with the reason:
+Error: Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    ...(重复的 Sentry/堆栈行已折叠)...
+Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    ...(重复的 Sentry/堆栈行已折叠)...
+This error originated either by throwing inside of an async function without a catch block, or by rejecting a promise which was not handled with .catch(). The promise rejected with the reason:
+Error: Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    ...(重复的 Sentry/堆栈行已折叠)...
+Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    ...(重复的 Sentry/堆栈行已折叠)...
+This error originated either by throwing inside of an async function without a catch block, or by rejecting a promise which was not handled with .catch(). The promise rejected with the reason:
+Error: Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    ...(重复的 Sentry/堆栈行已折叠)...
+Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    ...(重复的 Sentry/堆栈行已折叠)...
+This error originated either by throwing inside of an async function without a catch block, or by rejecting a promise which was not handled with .catch(). The promise rejected with the reason:
+Error: Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    ...(重复的 Sentry/堆栈行已折叠)...
+Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    ...(重复的 Sentry/堆栈行已折叠)...
+This error originated either by throwing inside of an async function without a catch block, or by rejecting a promise which was not handled with .catch(). The promise rejected with the reason:
+Error: Error: GPU access not allowed. Reason: GPU access is disabled through commandline switch --disable-gpu and --disable-software-rasterizer.
+    ...(重复的 Sentry/堆栈行已折叠)...

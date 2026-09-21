@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8">
+<title>SELFTEST-ERROR</title>
+<style>
+  html, body { margin: 0; background: #14141c; color: #e6e6f0;
+    font: 13px/1.6 Consolas, "Courier New", monospace; }
+  #wrap { display: flex; gap: 18px; padding: 16px; align-items: flex-start; }
+  #phone { width: 375px; height: 812px; border: 1px solid #3a3a4e; border-radius: 10px;
+    overflow: hidden; background: #000; flex: 0 0 auto; }
+  #phone iframe { width: 375px; height: 812px; border: 0; display: block; }
+  #report { white-space: pre-wrap; flex: 1 1 auto; max-width: 460px; }
+  .pass { color: #5fe08f; } .fail { color: #ff6b6b; } .head { color: #f7d774; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="phone"><iframe id="fr" src="index.html?_t=1789901693812"></iframe></div>
+  <pre id="report"><span class="head">[STEP] === H5 兜底版自动化验收开始 ===</span>
+<span class="head">[STEP] --- 场景 0：清空历史存档，保证从干净开局开始 ---</span>
+<span class="pass">[PASS] 可访问 localStorage（同源上下文建立成功）</span>
+<span class="head">[STEP] --- 场景 1：iframe(HTTP) 直连加载 index.html ---</span>
+<span class="pass">[PASS] 页面加载后 __gameReady 为 true（脚本无致命错误）  |  version=h5-fallback-1.0.0</span>
+<span class="pass">[PASS] 加载期无 JS 运行时错误  |  0 error</span>
+<span class="pass">[PASS] 开局自动放置 6 个 1 档单位  |  实际 1 档数量=6</span>
+<span class="pass">[PASS] 网格为 5 列 × 4 行 = 20 格  |  格数=20</span>
+<span class="pass">[PASS] 每秒产出 = 6×(1/s) = 6  |  cps=6</span>
+<span class="fail">[FAIL] 金币随时间自动增长（放置收益生效）  |  0.00 -&gt; 0.00</span>
+<span class="head">[STEP] --- 场景 2：拖拽合并（拖到同档单位上）---</span>
+<span class="pass">[PASS] 拖拽合并成功：1 档 -2、2 档 +1  |  1档 6-&gt;4, 2档 0-&gt;1</span>
+<span class="pass">[PASS] 合成计数 +1  |  merges=1</span>
+<span class="pass">[PASS] 图鉴解锁档位提升到 2  |  highestTier=2</span>
+<span class="head">[STEP] --- 场景 3：点选合并（点两个同档单位）---</span>
+<span class="pass">[PASS] 点选合并成功：1 档 -2  |  1档 4-&gt;2</span>
+<span class="head">[STEP] --- 场景 4：招募按钮 ---</span>
+<span class="pass">[PASS] 招募按钮放置了 1 个新单位  |  占用格 4-&gt;5</span>
+<span class="head">[STEP] --- 场景 5：图鉴面板 ---</span>
+<span class="pass">[PASS] 点击「图鉴」后面板打开</span>
+<span class="pass">[PASS] 再次点击「图鉴」后面板关闭</span>
+<span class="head">[STEP] --- 场景 6：最高档上限（6 档不再合并）---</span>
+<span class="pass">[PASS] 两个 6 档无法再合并（仍为 6 档）  |  cells[0]=6, cells[1]=6</span>
+<span class="head">[STEP] --- 场景 7：localStorage 存档 ---</span>
+<span class="pass">[PASS] save() 写入 localStorage 成功  |  字节数=129</span>
+<span class="pass">[PASS] 存档内容含 cells / coins / highestTier / time  |  coins=1234, merges=7</span>
+<span class="head">[STEP] --- 场景 8：刷新还原 + 离线收益（8h 封顶 / 50% 效率）---</span>
+<span class="pass">[PASS] 刷新后 localStorage 存档被还原（cells/coins 一致）  |  3档数量=3, coins=1234</span>
+<span class="pass">[PASS] 刷新后有初始单位被覆盖而非重置（未重新发放 6 个 1 档）  |  1档数量=0</span>
+<span class="fail">[FAIL] 离线 2 小时收益 = 81/s × 7200s × 50% = 291600  |  实际离线收益=0</span>
+<span class="fail">[FAIL] 离线收益弹窗出现</span>
+<span class="pass">[PASS] 点击「开始游戏」后弹窗关闭</span>
+<span class="head">[STEP] --- 场景 9：离线超过 8 小时按 8 小时封顶 ---</span>
+<span class="fail">[FAIL] 离线 48h 只结算 8h：期望 1166400  |  实际离线收益=0</span>
+<span class="head">[STEP] --- 场景 10：收尾 ---</span>
+<span class="fail">[FAIL] 测试脚本异常: TypeError: Cannot set properties of undefined (setting 'length')
+    at run (http://127.0.0.1:8080/_selftest.html:239:23)</span></pre>
+</div>
+<script>
+(function () {
+  var report = document.getElementById('report');
+  var fr = document.getElementById('fr');
+  var lines = [];
+  var anyFail = false;
+
+  function log(s, cls) {
+    lines.push(s);
+    report.innerHTML = lines.map(function (l) {
+      return l.indexOf('[PASS]') === 0 ? '<span class="pass">' + l + '</span>'
+        : l.indexOf('[FAIL]') === 0 ? '<span class="fail">' + l + '</span>'
+        : l.indexOf('[STEP]') === 0 ? '<span class="head">' + l + '</span>' : l;
+    }).join('\n');
+  }
+  function check(name, cond, detail) {
+    if (!cond) anyFail = true;
+    log((cond ? '[PASS] ' : '[FAIL] ') + name + (detail ? '  |  ' + detail : ''));
+    return !!cond;
+  }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  function loadFrame(injectErrors) {
+    return new Promise(function (resolve) {
+      fr.onload = function () { setTimeout(resolve, 260); };
+      if (injectErrors) {
+        fetch('index.html').then(function (r) { return r.text(); }).then(function (html) {
+          var hook = '<script>window.__errs=[];'
+            + 'window.addEventListener("error",function(e){window.__errs.push(String(e.message||e.error||e));});'
+            + 'window.addEventListener("unhandledrejection",function(e){window.__errs.push("REJ:"+String(e.reason));});'
+            + '<' + '/script>';
+          fr.srcdoc = html.replace('<head>', '<head>' + hook);
+        });
+      } else {
+        fr.removeAttribute('srcdoc');
+        fr.src = 'index.html?_t=' + Date.now();
+      }
+    });
+  }
+
+  function W() { return fr.contentWindow; }
+  function G() { return W().__game; }
+
+  function ev(type, pt, extra) {
+    var cw = W();
+    var opt = {
+      bubbles: true, cancelable: true, composed: true,
+      clientX: pt.x, clientY: pt.y, pointerId: 1, pointerType: 'touch',
+      isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1
+    };
+    if (extra) for (var k in extra) opt[k] = extra[k];
+    var canvas = cw.document.getElementById('cv');
+    canvas.dispatchEvent(new cw.PointerEvent(type, opt));
+  }
+
+  function cellPt(r, c) {
+    var g = G(), L = g.layout;
+    var x = L.GRID_X + c * (L.CELL + L.GAP) + L.CELL / 2;
+    var y = L.GRID_Y + r * (L.CELL + L.GAP) + L.CELL / 2;
+    return g.toClient(x, y);
+  }
+  function rectPt(b) { return G().toClient(b.x + b.w / 2, b.y + b.h / 2); }
+
+  function findCells(tier) {
+    var out = [], cells = G().state.cells, L = G().layout;
+    for (var i = 0; i < cells.length; i++) {
+      if (cells[i] === tier) out.push({ i: i, r: Math.floor(i / L.COLS), c: i % L.COLS });
+    }
+    return out;
+  }
+  function countTier(t) {
+    return G().state.cells.filter(function (v) { return v === t; }).length;
+  }
+
+  async function dragMerge(from, to) {
+    var a = cellPt(from.r, from.c), b = cellPt(to.r, to.c);
+    ev('pointerdown', a);
+    await sleep(30);
+    ev('pointermove', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    await sleep(30);
+    ev('pointermove', b);
+    await sleep(30);
+    ev('pointerup', b);
+    await sleep(120);
+  }
+  async function tap(pt) {
+    ev('pointerdown', pt); await sleep(25); ev('pointerup', pt); await sleep(60);
+  }
+
+  async function run() {
+    log('[STEP] === H5 兜底版自动化验收开始 ===');
+
+    // ---------- 场景 0：先建立同源上下文并清空历史存档 ----------
+    log('[STEP] --- 场景 0：清空历史存档，保证从干净开局开始 ---');
+    await loadFrame(false);
+    try { W().localStorage.clear(); } catch (e) {}
+    check('可访问 localStorage（同源上下文建立成功）',
+      (function () { try { W().localStorage.setItem('__t', '1'); W().localStorage.removeItem('__t'); return true; } catch (e) { return false; } })());
+
+    // ---------- 场景 1：HTTP 直连加载（真实部署路径）----------
+    log('[STEP] --- 场景 1：iframe(HTTP) 直连加载 index.html ---');
+    await loadFrame(true);
+    check('页面加载后 __gameReady 为 true（脚本无致命错误）', G() && G().isReady(), 'version=' + (G() ? G().version : 'N/A'));
+
+    var errs = W().__errs || [];
+    check('加载期无 JS 运行时错误', errs.length === 0, errs.length ? errs.join(' ; ') : '0 error');
+
+    var c0 = G().state.cells, tier1 = countTier(1);
+    check('开局自动放置 6 个 1 档单位', tier1 === 6, '实际 1 档数量=' + tier1);
+    check('网格为 5 列 × 4 行 = 20 格', c0.length === 20, '格数=' + c0.length);
+
+    var coinsA = G().state.coins, cpsA = G().coinsPerSecond();
+    check('每秒产出 = 6×(1/s) = 6', cpsA === 6, 'cps=' + cpsA);
+    await sleep(1300);
+    var coinsB = G().state.coins;
+    check('金币随时间自动增长（放置收益生效）', coinsB > coinsA, coinsA.toFixed(2) + ' -> ' + coinsB.toFixed(2));
+
+    // ---------- 场景 2：拖拽合并 ----------
+    log('[STEP] --- 场景 2：拖拽合并（拖到同档单位上）---');
+    var ones = findCells(1);
+    var before1 = countTier(1), before2 = countTier(2);
+    await dragMerge(ones[0], ones[1]);
+    check('拖拽合并成功：1 档 -2、2 档 +1',
+      countTier(1) === before1 - 2 && countTier(2) === before2 + 1,
+      '1档 ' + before1 + '->' + countTier(1) + ', 2档 ' + before2 + '->' + countTier(2));
+    check('合成计数 +1', G().state.merges === 1, 'merges=' + G().state.merges);
+    check('图鉴解锁档位提升到 2', G().state.highestTier === 2, 'highestTier=' + G().state.highestTier);
+
+    // ---------- 场景 3：点选式合并（与 Cocos 原型一致）----------
+    log('[STEP] --- 场景 3：点选合并（点两个同档单位）---');
+    var ones2 = findCells(1);
+    var b1 = countTier(1);
+    await tap(cellPt(ones2[0].r, ones2[0].c));
+    await tap(cellPt(ones2[1].r, ones2[1].c));
+    check('点选合并成功：1 档 -2',
+      countTier(1) === b1 - 2, '1档 ' + b1 + '->' + countTier(1));
+
+    // ---------- 场景 4：招募按钮 ----------
+    log('[STEP] --- 场景 4：招募按钮 ---');
+    var filledBefore = countFilled();
+    await tap(rectPt(G().layout.SPAWN_BTN));
+    check('招募按钮放置了 1 个新单位', countFilled() === filledBefore + 1,
+      '占用格 ' + filledBefore + '->' + countFilled());
+
+    // ---------- 场景 5：图鉴面板 ----------
+    log('[STEP] --- 场景 5：图鉴面板 ---');
+    await tap(rectPt(G().layout.COLL_BTN));
+    check('点击「图鉴」后面板打开', G().isCollectionOpen() === true);
+    await tap(rectPt(G().layout.COLL_BTN));
+    check('再次点击「图鉴」后面板关闭', G().isCollectionOpen() === false);
+
+    // ---------- 场景 6：满级上限 ----------
+    log('[STEP] --- 场景 6：最高档上限（6 档不再合并）---');
+    var cells = G().state.cells;
+    for (var i = 0; i < cells.length; i++) cells[i] = 0;
+    cells[0] = 6; cells[1] = 6;
+    G().state.highestTier = 6;
+    await dragMerge({ r: 0, c: 0 }, { r: 0, c: 1 });
+    check('两个 6 档无法再合并（仍为 6 档）',
+      G().state.cells[1] === 6 && G().state.cells[0] === 6,
+      'cells[0]=' + G().state.cells[0] + ', cells[1]=' + G().state.cells[1]);
+
+    // ---------- 场景 7：localStorage 存档 ----------
+    log('[STEP] --- 场景 7：localStorage 存档 ---');
+    for (var j = 0; j < cells.length; j++) cells[j] = 0;
+    cells[0] = 3; cells[1] = 3; cells[2] = 3;
+    G().state.coins = 1234;
+    G().state.highestTier = 3;
+    G().state.merges = 7;
+    var saved = G().save();
+    var raw = null;
+    try { raw = W().localStorage.getItem(G().saveKey); } catch (e) { raw = null; }
+    check('save() 写入 localStorage 成功', saved === true && !!raw && raw.length > 20,
+      '字节数=' + (raw ? raw.length : 0));
+    var parsed = raw ? JSON.parse(raw) : null;
+    check('存档内容含 cells / coins / highestTier / time',
+      !!parsed && Array.isArray(parsed.cells) && parsed.coins === 1234 && !!parsed.time,
+      parsed ? ('coins=' + parsed.coins + ', merges=' + parsed.merges) : 'no data');
+
+    // ---------- 场景 8：刷新还原 + 离线收益 ----------
+    log('[STEP] --- 场景 8：刷新还原 + 离线收益（8h 封顶 / 50% 效率）---');
+    // 伪造 2 小时前的时间戳，重新加载 -> 期望收益 = cps * 7200 * 0.5
+    var fake = JSON.parse(raw);
+    fake.time = Date.now() - 2 * 3600 * 1000;
+    W().localStorage.setItem(G().saveKey, JSON.stringify(fake));
+
+    await loadFrame(false);
+    check('刷新后 localStorage 存档被还原（cells/coins 一致）',
+      countTier(3) === 3 && G().state.coins >= 1234,
+      '3档数量=' + countTier(3) + ', coins=' + Math.floor(G().state.coins));
+    check('刷新后有初始单位被覆盖而非重置（未重新发放 6 个 1 档）',
+      countTier(1) === 0, '1档数量=' + countTier(1));
+
+    var expOffline = Math.floor(3 * 27 * 7200 * 0.5); // 3 个 3 档 = 81/s
+    var gotOffline = Math.floor(G().state.coins) - 1234;
+    check('离线 2 小时收益 = 81/s × 7200s × 50% = ' + expOffline,
+      Math.abs(gotOffline - expOffline) <= 2, '实际离线收益=' + gotOffline);
+    check('离线收益弹窗出现', G().isModalOpen() === true);
+
+    await tap({ x: G().toClient(187.5, 468).x, y: G().toClient(187.5, 468).y });
+    await sleep(200);
+    check('点击「开始游戏」后弹窗关闭', G().isModalOpen() === false);
+
+    // ---------- 场景 9：离线 8 小时封顶 ----------
+    log('[STEP] --- 场景 9：离线超过 8 小时按 8 小时封顶 ---');
+    var fake2 = JSON.parse(raw);
+    fake2.time = Date.now() - 48 * 3600 * 1000; // 离线 48 小时
+    W().localStorage.setItem(G().saveKey, JSON.stringify(fake2));
+    await loadFrame(false);
+    var expCap = Math.floor(3 * 27 * 8 * 3600 * 0.5);
+    var gotCap = Math.floor(G().state.coins) - 1234;
+    check('离线 48h 只结算 8h：期望 ' + expCap,
+      Math.abs(gotCap - expCap) <= 2, '实际离线收益=' + gotCap);
+
+    // ---------- 场景 10：重置与收尾 ----------
+    log('[STEP] --- 场景 10：收尾 ---');
+    W().localStorage.removeItem(G().saveKey);
+    W().__errs.length = 0;
+    await sleep(1500);
+    check('长时间运行无 JS 运行时错误', (W().__errs || []).length === 0,
+      'errs=' + JSON.stringify((W().__errs || []).slice(0, 3)));
+
+    log('');
+    log(anyFail ? '[FAIL] === 存在失败项，验收未通过 ===' : '[PASS] === 全部验收项通过 ===');
+    document.title = anyFail ? 'SELFTEST-FAIL' : 'SELFTEST-PASS';
+    var done = document.createElement('div');
+    done.id = 'selftest-done';
+    done.textContent = anyFail ? 'FAIL' : 'PASS';
+    document.body.appendChild(done);
+
+    function countFilled() {
+      return G().state.cells.filter(function (v) { return v > 0; }).length;
+    }
+  }
+
+  window.addEventListener('error', function (e) {
+    log('[FAIL] 测试页自身错误: ' + e.message);
+  });
+
+  setTimeout(function () {
+    run().catch(function (e) {
+      log('[FAIL] 测试脚本异常: ' + (e && e.stack ? e.stack : e));
+      document.title = 'SELFTEST-ERROR';
+      var done = document.createElement('div');
+      done.id = 'selftest-done';
+      done.textContent = 'ERROR';
+      document.body.appendChild(done);
+    });
+  }, 300);
+})();
+</script>
+
+
+<div id="selftest-done">ERROR</div></body></html>
+109274 bytes written to file C:/Users/37615/Projects/game/build/_evidence/02_selftest.png

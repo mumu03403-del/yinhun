@@ -1,0 +1,7 @@
+{
+  "wechatgame": {
+    "appid": "touristappid",
+    "buildPath": "build",
+    "mainBundleCompressionType": "merge_dep"
+  }
+}

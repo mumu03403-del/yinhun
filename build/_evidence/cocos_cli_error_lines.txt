@@ -1,0 +1,55 @@
+==================== 关键报错原文（逐字摘录，未做任何转述） ====================
+来源：Cocos Creator 3.8.8 命令行构建的 stdout/stderr
+      原始日志文件 _cli_stdout3.log 在采集期间已增长到 263,930,122 字节（约 264 MB），
+      以下片段是在日志仍在增长时从实时输出中截取的原文，截取后已对原日志做截断止血。
+
+--- 片段 A：第一次尝试（环境变量 ELECTRON_RUN_AS_NODE=1 未清除）---
+命令: CocosCreator.exe --project C:/Users/37615/Projects/game-build-tmp --build "platform=web-mobile;debug=true"
+输出: C://ProgramData//cocos//editors//Creator//3.8.8//CocosCreator.exe: bad option: --project
+
+--- 片段 B：清除 ELECTRON_RUN_AS_NODE 后，参数被正确识别，编辑器开始加载，随后 GPU 进程崩溃 ---
+init **** success
+Arguments:
+  C://ProgramData//cocos//editors//Creator//3.8.8//CocosCreator.exe: true
+  project: C:/Users/37615/Projects/game-build-tmp
+  build: platform=web-mobile;debug=true
+  dev: false
+  home: C://Users//37615//.CocosCreator
+
+[6892:0920/184853.597:ERROR:gpu_process_host.cc(1002)] GPU process exited unexpectedly: exit_code=1
+[Package] metrics@1.0.0 enable
+[Package] menu@1.0.0 enable
+[Package] profile@1.0.0 enable
+[Package] Profile migrateProject: project(0.0.0)...
+[Package] project@1.0.6 enable
+[Package] messages@1.0.0 enable
+[Package] utils@1.0.0 enable
+[Package] Profile migrateGlobal: program(0.0.0)...
+[Package] program@1.0.4 enable
+[Package] tester@1.0.0 enable
+[6892:0920/184854.404:ERROR:gpu_process_host.cc(1002)] GPU process exited unexpectedly: exit_code=1
+[6892:0920/184854.535:ERROR:gpu_process_host.cc(1002)] GPU process exited unexpectedly: exit_code=1
+...(同一行连续重复 8 次)...
+[6892:0920/184855.292:ERROR:gpu_process_host.cc(1002)] GPU process exited unexpectedly: exit_code=1
+[6892:0920/184855.292:FATAL:gpu_data_manager_impl_private.cc(449)] GPU process isn't usable. Goodbye.
+
+--- 片段 C：加 --no-sandbox --disable-gpu --in-process-gpu 后，编辑器活下来并进入 build 命令，随后登录服务器连不上 ---
+[Build] internalRegister pkg(cocos-service) in web-desktop platform success!
+[Build] internalRegister pkg(cocos-service) in web-mobile platform success!
+[Build] internalRegister pkg(cocos-service) in wechatgame platform success!
+[Build-plugin] register pkg cocos-service: 7ms
+[Package] im-plugin@3.0.14 enable
+[Package] placeholder@1.0.0 enable
+Start enter command build with options {"platform":"web-mobile","debug":"true"}
+Request timeout, aborting...
+Request timeout, aborting...
+Failed to connect to login server: socket hang up
+Failed to connect to login server: socket hang up
+Request timeout, aborting...
+Failed to connect to login server: socket hang up
+
+--- 片段 D：进程最终以 GPU/GL 致命错误退出，构建目录始终未生成 ---
+[16392:0920/185648.961:FATAL:gles2_cmd_decoder.cc(2961)] Validating command decoder is not supported.
+
+--- 结果 ---
+C:/Users/37615/Projects/game-build-tmp/build 目录不存在，无任何构建产物。

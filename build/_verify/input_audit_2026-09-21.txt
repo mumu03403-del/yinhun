@@ -1,0 +1,19 @@
+﻿=== A. 补充角色目录 C:\Users\37615\Downloads\银魂 ===
+cosplay形象设计 (1).png | 4015497 bytes
+cosplay形象设计 (10).png | 5547112 bytes
+cosplay形象设计 (11).png | 5051861 bytes
+cosplay形象设计 (2).png | 4985439 bytes
+cosplay形象设计 (3).png | 5011554 bytes
+cosplay形象设计 (4).png | 5351746 bytes
+cosplay形象设计 (5).png | 4866736 bytes
+cosplay形象设计 (6).png | 5147070 bytes
+cosplay形象设计 (7).png | 5102272 bytes
+cosplay形象设计 (8).png | 4646837 bytes
+cosplay形象设计 (9).png | 5634621 bytes
+cosplay形象设计.png | 4956389 bytes
+=== B. git 环境 ===
+git version 2.55.0.windows.2
+user.name = 
+user.email = 
+credential.helper = !"C:/Users/37615/.workbuddy/binaries/PortableGit/versions/1.2.0/mingw64/bin/git-credential-manager.exe"
+DONE

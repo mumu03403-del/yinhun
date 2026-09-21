@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>probe</title></head>
+<body style="margin:0;background:#000;color:#0f0;font:14px monospace">
+<pre id="out">pending</pre>
+<script>
+var o = [];
+o.push('innerWidth=' + window.innerWidth);
+o.push('innerHeight=' + window.innerHeight);
+o.push('dpr=' + window.devicePixelRatio);
+o.push('screen=' + screen.width + 'x' + screen.height);
+o.push('outer=' + window.outerWidth + 'x' + window.outerHeight);
+document.getElementById('out').textContent = o.join('\n');
+</script>
+</body></html>

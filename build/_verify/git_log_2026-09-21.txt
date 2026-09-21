@@ -1,0 +1,3 @@
+﻿=== git init ===
+Initialized empty Git repository in C:/Users/37615/Projects/game/.git/
+=== add ===

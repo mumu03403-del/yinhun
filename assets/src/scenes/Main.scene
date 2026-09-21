@@ -1,0 +1,165 @@
+[
+  {
+    "__type__": "cc.SceneAsset",
+    "_name": "Main",
+    "_objFlags": 0,
+    "_native": "",
+    "scene": {
+      "__id__": 1
+    },
+    "autoReleaseAssets": false
+  },
+  {
+    "__type__": "cc.Scene",
+    "_name": "Main",
+    "_objFlags": 0,
+    "_parent": null,
+    "_children": [
+      { "__id__": 2 },
+      { "__id__": 3 }
+    ],
+    "_active": true,
+    "_components": [],
+    "_prefab": null,
+    "autoReleaseAssets": false,
+    "persist": false,
+    "depends": []
+  },
+  {
+    "__type__": "cc.Node",
+    "_name": "Canvas",
+    "_objFlags": 0,
+    "_parent": { "__id__": 1 },
+    "_children": [
+      { "__id__": 4 }
+    ],
+    "_active": true,
+    "_components": [
+      { "__id__": 5 },
+      { "__id__": 6 }
+    ],
+    "_prefab": null,
+    "_lpos": { "__type__": "cc.Vec3", "x": 0, "y": 0, "z": 0 },
+    "_lrot": { "__type__": "cc.Quat", "x": 0, "y": 0, "z": 0, "w": 1 },
+    "_lscale": { "__type__": "cc.Vec3", "x": 1, "y": 1, "z": 1 },
+    "_layer": 33554432,
+    "_euler": { "__type__": "cc.Vec3", "x": 0, "y": 0, "z": 0 }
+  },
+  {
+    "__type__": "cc.Node",
+    "_name": "Camera",
+    "_objFlags": 0,
+    "_parent": { "__id__": 1 },
+    "_children": [],
+    "_active": true,
+    "_components": [
+      { "__id__": 7 }
+    ],
+    "_prefab": null,
+    "_lpos": { "__type__": "cc.Vec3", "x": 0, "y": 0, "z": 1000 },
+    "_lrot": { "__type__": "cc.Quat", "x": 0, "y": 0, "z": 0, "w": 1 },
+    "_lscale": { "__type__": "cc.Vec3", "x": 1, "y": 1, "z": 1 },
+    "_layer": 1073741824,
+    "_euler": { "__type__": "cc.Vec3", "x": 0, "y": 0, "z": 0 }
+  },
+  {
+    "__type__": "cc.Node",
+    "_name": "GameRoot",
+    "_objFlags": 0,
+    "_parent": { "__id__": 2 },
+    "_children": [],
+    "_active": true,
+    "_components": [
+      { "__id__": 8 }
+    ],
+    "_prefab": null,
+    "_lpos": { "__type__": "cc.Vec3", "x": 0, "y": 0, "z": 0 },
+    "_lrot": { "__type__": "cc.Quat", "x": 0, "y": 0, "z": 0, "w": 1 },
+    "_lscale": { "__type__": "cc.Vec3", "x": 1, "y": 1, "z": 1 },
+    "_layer": 33554432,
+    "_euler": { "__type__": "cc.Vec3", "x": 0, "y": 0, "z": 0 }
+  },
+  {
+    "__type__": "cc.Canvas",
+    "_name": "Canvas",
+    "_objFlags": 0,
+    "node": { "__id__": 2 },
+    "_enabled": true,
+    "_id": "",
+    "cameraComponent": { "__id__": 7 },
+    "pixelWave": 2,
+    "_softness": { "__type__": "cc.Vec2", "x": 0, "y": 0 },
+    "fitWidth": false,
+    "fitHeight": false,
+    "_priority": 0,
+    "_targetScale": 1
+  },
+  {
+    "__type__": "cc.Widget",
+    "_name": "Widget",
+    "_objFlags": 0,
+    "node": { "__id__": 2 },
+    "_enabled": true,
+    "_id": "",
+    "_alignFlags": 45,
+    "_target": null,
+    "_left": 0,
+    "_right": 0,
+    "_top": 0,
+    "_bottom": 0,
+    "_horizontalCenter": 0,
+    "_verticalCenter": 0,
+    "_isAbsLeft": true,
+    "_isAbsRight": true,
+    "_isAbsTop": true,
+    "_isAbsBottom": true,
+    "_isAbsHorizontalCenter": true,
+    "_isAbsVerticalCenter": true,
+    "_originalWidth": 0,
+    "_originalHeight": 0,
+    "_lockLeft": true,
+    "_lockRight": true,
+    "_lockTop": true,
+    "_lockBottom": true
+  },
+  {
+    "__type__": "cc.Camera",
+    "_name": "Main Camera",
+    "_objFlags": 0,
+    "node": { "__id__": 3 },
+    "_enabled": true,
+    "_id": "",
+    "_projection": 0,
+    "_priority": 0,
+    "_fov": 45,
+    "_fovAxis": 0,
+    "_near": 0.1,
+    "_far": 1000,
+    "_color": { "__type__": "cc.Color", "r": 50, "g": 50, "b": 50, "a": 255 },
+    "_depth": 1,
+    "_stencil": 0,
+    "_clearColor": true,
+    "_clearDepth": 1,
+    "_clearStencil": 0,
+    "_rect": { "__type__": "cc.Rect", "x": 0, "y": 0, "width": 1, "height": 1 },
+    "_aperture": 19,
+    "_shutter": 11,
+    "_iso": 21,
+    "_screenScale": 1,
+    "_visibility": 4294967295,
+    "view": null,
+    "_frustumExtends": 0,
+    "_isProjMatDirty": false,
+    "_exposure": 1.2,
+    "_ndcZ": false,
+    "_isAutoRender": true
+  },
+  {
+    "__type__": "Bootstrap",
+    "_name": "",
+    "_objFlags": 0,
+    "node": { "__id__": 4 },
+    "_enabled": true,
+    "_id": ""
+  }
+]

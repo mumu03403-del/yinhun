@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>该验证页已废弃 —— 请改用 CDP 验收脚本</title>
+<style>
+  body { margin: 0; padding: 32px; background: #14141c; color: #e6e6f0;
+    font: 14px/1.8 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  code { background: #232334; padding: 2px 6px; border-radius: 4px; color: #f7d774; }
+  h1 { font-size: 18px; color: #f7d774; }
+  .warn { color: #ff9d6b; }
+</style>
+</head>
+<body>
+<h1>此页已废弃（SUPERSEDED）</h1>
+<p class="warn">请勿使用本页做验收。它基于 Chrome 的 <code>--virtual-time-budget</code> 虚拟时钟，
+会跳过 rAF 帧与 <code>Date.now()</code> 的真实推进，导致「放置收益随时间增长」和「离线收益」两项出现<strong>假阴性</strong>。</p>
+<p>权威验收脚本已改为通过 Chrome DevTools Protocol 用<strong>真实时钟 + 真实指针事件</strong>驱动，并逐阶段截图取证：</p>
+<p><code>C:\Users\37615\Projects\game\build\_verify\cdp_verify.mjs</code></p>
+<p>运行方式（前提：本地静态服务已启动在 8080 端口）：</p>
+<pre><code>cd C:\Users\37615\Projects\game\build\_verify
+node cdp_verify.mjs</code></pre>
+<p>另有 <code>file_check.mjs</code> 用于验证「双击 index.html 直接打开」这条路径。</p>
+<p>截图与结果落在 <code>C:\Users\37615\Projects\game\build\_evidence\</code>。</p>
+</body>
+</html>

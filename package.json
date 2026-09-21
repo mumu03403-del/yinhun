@@ -1,0 +1,9 @@
+{
+  "name": "gintama-merge-idle",
+  "version": "0.1.0",
+  "description": "银魂风 MERGE + IDLE 微信小游戏原型（占位美术，无任何版权素材）",
+  "private": true,
+  "scripts": {
+    "build:wechat": "echo '请在 Cocos Creator 编辑器内执行 项目 -> 构建发布 -> 微信小游戏'"
+  }
+}

@@ -1,0 +1,150 @@
+{
+  "results": [
+    {
+      "name": "手机视口 375×812 生效",
+      "ok": true,
+      "detail": "375×812 dpr=2"
+    },
+    {
+      "name": "页面脚本加载完成（__gameReady）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "网格 5 列 × 4 行 = 20 格",
+      "ok": true,
+      "detail": "格数=20"
+    },
+    {
+      "name": "开局自动放置 6 个 1 档单位",
+      "ok": true,
+      "detail": "1 档数量=6"
+    },
+    {
+      "name": "每秒产出 = 6 × 1/s = 6",
+      "ok": true,
+      "detail": "cps=6"
+    },
+    {
+      "name": "金币按真实时间自动增长（放置收益生效）",
+      "ok": true,
+      "detail": "4.30 -> 17.60（2.2s 内 +13.30）"
+    },
+    {
+      "name": "拖拽合并成功：1 档 -2、2 档 +1",
+      "ok": true,
+      "detail": "1 档 6->4，2 档 0->1"
+    },
+    {
+      "name": "合成次数 +1",
+      "ok": true,
+      "detail": "merges=1"
+    },
+    {
+      "name": "图鉴解锁档位提升到 2 档",
+      "ok": true,
+      "detail": "highestTier=2"
+    },
+    {
+      "name": "点选两个同档单位成功合并：1 档 -2",
+      "ok": true,
+      "detail": "1 档 4->2"
+    },
+    {
+      "name": "合成次数累加到 2",
+      "ok": true,
+      "detail": "merges=2"
+    },
+    {
+      "name": "点击「招募 +1」放置 1 个新单位",
+      "ok": true,
+      "detail": "占用格 4->5"
+    },
+    {
+      "name": "点击「图鉴」面板打开",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "已解锁到 2 档（图鉴首卡应解锁）",
+      "ok": true,
+      "detail": "highestTier=2"
+    },
+    {
+      "name": "再次点击「图鉴」面板关闭",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "两个 6 档无法再合并（上限生效）",
+      "ok": true,
+      "detail": "cells[0]=6, cells[1]=6"
+    },
+    {
+      "name": "save() 成功写入 localStorage",
+      "ok": true,
+      "detail": "key=merge_samurai_save_v1, 字节数=129"
+    },
+    {
+      "name": "3 个 3 档的每秒产出 = 3 × 9 = 27",
+      "ok": true,
+      "detail": "cps=27"
+    },
+    {
+      "name": "刷新后存档还原：3 档数量 = 3",
+      "ok": true,
+      "detail": "3 档数量=3"
+    },
+    {
+      "name": "刷新后未重复发放开局单位",
+      "ok": true,
+      "detail": "1 档数量=0"
+    },
+    {
+      "name": "合成次数随存档保留 = 7",
+      "ok": true,
+      "detail": "merges=7"
+    },
+    {
+      "name": "离线 2 小时收益 = 27/s × 7200s × 50% = 97200",
+      "ok": true,
+      "detail": "实际离线收益 = 97200"
+    },
+    {
+      "name": "离线收益弹窗出现",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "离线 48 小时只结算 8 小时：期望 388800",
+      "ok": true,
+      "detail": "实际离线收益 = 388800"
+    },
+    {
+      "name": "点击「开始游戏」弹窗关闭",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "清档刷新后回到干净开局（6 个 1 档）",
+      "ok": true,
+      "detail": "1 档数量=6"
+    },
+    {
+      "name": "清档后金币从 0 重新累积",
+      "ok": true,
+      "detail": "coins=22"
+    },
+    {
+      "name": "长时间运行无 JS 异常（含动画期间）",
+      "ok": true,
+      "detail": "0 条异常"
+    },
+    {
+      "name": "连续 6 轮快速合成不中断主循环（动画路径无异常）",
+      "ok": true,
+      "detail": "4 轮合成后 highestTier=2"
+    }
+  ],
+  "pageErrors": []
+}

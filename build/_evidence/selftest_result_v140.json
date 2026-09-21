@@ -1,0 +1,331 @@
+{
+  "tag": "v140_",
+  "results": [
+    {
+      "name": "手机视口 375×812 生效",
+      "ok": true,
+      "detail": "375×812 dpr=2"
+    },
+    {
+      "name": "页面脚本加载完成（__gameReady）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "网格 5 列 × 4 行 = 20 格",
+      "ok": true,
+      "detail": "格数=20"
+    },
+    {
+      "name": "开局自动放置 6 个 1 档单位",
+      "ok": true,
+      "detail": "1 档数量=6"
+    },
+    {
+      "name": "每秒产出 = 6 × 1/s = 6",
+      "ok": true,
+      "detail": "cps=6"
+    },
+    {
+      "name": "金币按真实时间自动增长（放置收益生效）",
+      "ok": true,
+      "detail": "4.20 -> 17.50（2.2s 内 +13.30）"
+    },
+    {
+      "name": "拖拽合并成功：1 档 -2、2 档 +1",
+      "ok": true,
+      "detail": "1 档 6->4，2 档 0->1"
+    },
+    {
+      "name": "合成次数 +1",
+      "ok": true,
+      "detail": "merges=1"
+    },
+    {
+      "name": "图鉴解锁档位提升到 2 档",
+      "ok": true,
+      "detail": "highestTier=2"
+    },
+    {
+      "name": "点选两个同档单位不触发合并（仅拖拽可合并）",
+      "ok": true,
+      "detail": "1 档 4->4（应不变）"
+    },
+    {
+      "name": "点选不增加合成次数",
+      "ok": true,
+      "detail": "merges 1->1"
+    },
+    {
+      "name": "点击「招募 +1」放置 1 个新单位",
+      "ok": true,
+      "detail": "占用格 5->6"
+    },
+    {
+      "name": "点击「图鉴」面板打开",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "已解锁到 2 档（图鉴首卡应解锁）",
+      "ok": true,
+      "detail": "highestTier=2"
+    },
+    {
+      "name": "再次点击「图鉴」面板关闭",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "累计结算<3 时 6 档→7 档被拦截（6 档数量不变）",
+      "ok": true,
+      "detail": "6 档 2->2"
+    },
+    {
+      "name": "累计结算<3 时未生成 7 档（门槛生效，仍为 2 个 6 档）",
+      "ok": true,
+      "detail": "7 档=0, 6 档=2, merges 0->0"
+    },
+    {
+      "name": "门槛未达成时图鉴 7 档卡显示锁定（codexCardUnlocked(6)=false）",
+      "ok": true,
+      "detail": "tier7Unlocked=false, codexCardUnlocked(6)=false"
+    },
+    {
+      "name": "门槛前置满足：settles≥10 且 图鉴6/6（tier7/tier8 均解锁）",
+      "ok": true,
+      "detail": "settles=12, highestTier=8, tier7=true, tier8=true"
+    },
+    {
+      "name": "门槛满足后图鉴 7/8 档卡均显示解锁",
+      "ok": true,
+      "detail": "codex7=true, codex8=true"
+    },
+    {
+      "name": "两个 8 档无法再合并（上限生效）",
+      "ok": true,
+      "detail": "cells[0]=8, cells[1]=8"
+    },
+    {
+      "name": "拖拽合成 7 档 → 8 档成功（两个 7 档变一个 8 档）",
+      "ok": true,
+      "detail": "cells[0]=0, cells[1]=8"
+    },
+    {
+      "name": "合成 8 档后最高档位更新为 8",
+      "ok": true,
+      "detail": "highestTier=8"
+    },
+    {
+      "name": "save() 成功写入 localStorage",
+      "ok": true,
+      "detail": "key=merge_samurai_save_v1, 字节数=142"
+    },
+    {
+      "name": "3 个 3 档的每秒产出 = 3 × 9 = 27",
+      "ok": true,
+      "detail": "cps=27"
+    },
+    {
+      "name": "刷新后存档还原：3 档数量 = 3",
+      "ok": true,
+      "detail": "3 档数量=3"
+    },
+    {
+      "name": "刷新后未重复发放开局单位",
+      "ok": true,
+      "detail": "1 档数量=0"
+    },
+    {
+      "name": "合成次数随存档保留 = 7",
+      "ok": true,
+      "detail": "merges=7"
+    },
+    {
+      "name": "结算次数随存档持久化（刷新后 settles 仍为 12）",
+      "ok": true,
+      "detail": "settles=12"
+    },
+    {
+      "name": "离线 2 小时收益 = 27/s × 7200s × 50% = 97200",
+      "ok": true,
+      "detail": "实际离线收益 = 97201"
+    },
+    {
+      "name": "离线收益弹窗出现",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "离线 48 小时只结算 8 小时：期望 388800",
+      "ok": true,
+      "detail": "实际离线收益 = 388800"
+    },
+    {
+      "name": "点击「开始游戏」弹窗关闭",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "清档刷新后回到干净开局（6 个 1 档）",
+      "ok": true,
+      "detail": "1 档数量=6"
+    },
+    {
+      "name": "清档后金币从 0 重新累积",
+      "ok": true,
+      "detail": "coins=22"
+    },
+    {
+      "name": "长时间运行无 JS 异常（含动画期间）",
+      "ok": true,
+      "detail": "0 条异常"
+    },
+    {
+      "name": "连续 6 轮快速合成不中断主循环（动画路径无异常）",
+      "ok": true,
+      "detail": "4 轮合成后 highestTier=2"
+    },
+    {
+      "name": "结算时长规范 = 30 秒产出",
+      "ok": true,
+      "detail": "settleSeconds=30"
+    },
+    {
+      "name": "长按阈值 = 500ms",
+      "ok": true,
+      "detail": "longPressMs=500"
+    },
+    {
+      "name": "8 档结算值 = 30 × 2187 = 65610",
+      "ok": true,
+      "detail": "settleValue(8)=65610，独立算式=65610"
+    },
+    {
+      "name": "满级单位可被结算（不再死锁）",
+      "ok": true,
+      "detail": "doSettle 返回 true，结算后 cells[0]=0"
+    },
+    {
+      "name": "结算满级（8 档）单位金额精确 = 65610 金币",
+      "ok": true,
+      "detail": "coins=65610"
+    },
+    {
+      "name": "结算后该格不再产出（cps 归零）",
+      "ok": true,
+      "detail": "cps=0"
+    },
+    {
+      "name": "结算次数 +1",
+      "ok": true,
+      "detail": "settles=1"
+    },
+    {
+      "name": "死锁场景构造成功：20 格全被满级单位填满",
+      "ok": true,
+      "detail": "占用格=20"
+    },
+    {
+      "name": "满格时招募失败（确实处于死锁态）",
+      "ok": true,
+      "detail": "spawnTier1 返回 false"
+    },
+    {
+      "name": "短按 < 阈值时进度已激活但不会误结算",
+      "ok": true,
+      "detail": "按下 250ms 进度激活=true，松手后 settles=0"
+    },
+    {
+      "name": "长按进行中进度环已激活",
+      "ok": true,
+      "detail": "isPressActive=true"
+    },
+    {
+      "name": "进度中棋盘仍为满盘（尚未结算）",
+      "ok": true,
+      "detail": "满级格数=20"
+    },
+    {
+      "name": "越过 500ms 阈值后满级格子被释放",
+      "ok": true,
+      "detail": "cells[0]=0"
+    },
+    {
+      "name": "长按结算计数 = 1",
+      "ok": true,
+      "detail": "settles=1"
+    },
+    {
+      "name": "结算金币增加（含同时段放置收益，应 ≥ 65610）",
+      "ok": true,
+      "detail": "结算瞬间金币 +96331"
+    },
+    {
+      "name": "释放后棋盘恢复可玩（招募重新成功）",
+      "ok": true,
+      "detail": "释放后占用=20，spawnTier1 返回 true"
+    },
+    {
+      "name": "达到最高档位后最后一张卡解锁（off-by-one 已修）",
+      "ok": true,
+      "detail": "highestTier=8 时 cardUnlocked(7)=true"
+    },
+    {
+      "name": "最高档位时全部 8 张卡都解锁",
+      "ok": true,
+      "detail": "已解锁 8/8"
+    },
+    {
+      "name": "未达最高档位时最后一张卡仍锁定（解锁有梯度）",
+      "ok": true,
+      "detail": "highestTier=7 时最后一张卡解锁=false"
+    },
+    {
+      "name": "第 1 张卡对应 1 档形态（开局即可见）",
+      "ok": true,
+      "detail": "highestTier=1 时已解锁 1 张"
+    },
+    {
+      "name": "解锁数量随档位单调递增且逐步 +1",
+      "ok": true,
+      "detail": "1档:1 2档:2 3档:3 4档:4 5档:5 6档:6 7档:7 8档:8"
+    },
+    {
+      "name": "真机拖拽合出最高档位 (8 档)",
+      "ok": true,
+      "detail": "7 档 → 8 档"
+    },
+    {
+      "name": "合出最高档的瞬间最后一张卡解锁",
+      "ok": true,
+      "detail": "合成前=false，合成后=true"
+    },
+    {
+      "name": "图鉴计数走满 8/8",
+      "ok": true,
+      "detail": "已解锁 8 张"
+    },
+    {
+      "name": "图鉴面板可打开以查看满卡",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "全部 8 个档位的文字对比度均 ≥ 4.5:1（WCAG AA）",
+      "ok": true,
+      "detail": "最低为 6 档 #e74c3c（4.82:1）"
+    },
+    {
+      "name": "4 档黄色 #f1c40f 的对比度已从 1.66:1 提升到 ≥ 4.5:1",
+      "ok": true,
+      "detail": "4 档实测 11.09:1，文字色 #141414"
+    },
+    {
+      "name": "高亮底色自动改用深色文字（不再压白字）",
+      "ok": true,
+      "detail": "1档/2档/3档/4档/5档/6档/8档 使用深色文字"
+    }
+  ],
+  "pageErrors": []
+}
