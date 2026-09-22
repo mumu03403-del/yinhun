@@ -9,6 +9,15 @@ desktop.ini
 # 依赖目录（如出现）
 node_modules/
 
+# Cocos Creator 生成物（缓存，可由编辑器重建，不入库）
+library/
+temp/
+profiles/
+# 注意：刻意不忽略 build/ —— build/publish/ 是已上线的 H5 v2.8.0 产物，必须入库
+# Cocos 构建输出（如出现）
+build/web-mobile/
+build/wechatgame/
+
 # 水印处理前的原图备份与临时依赖缓存（不入库）
 _watermark_originals/
 build/_verify/_tmp_lamejs/

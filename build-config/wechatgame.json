@@ -1,0 +1,66 @@
+{
+  "__version__": "1.3.9",
+  "platform": "wechatgame",
+  "taskName": "wechatgame",
+  "outputName": "wechatgame",
+  "name": "gintama-merge-idle",
+  "debug": true,
+  "buildPath": "project://build",
+  "buildMode": "normal",
+  "mainBundleCompressionType": "merge_dep",
+  "mangleProperties": false,
+  "md5Cache": false,
+  "skipCompressTexture": false,
+  "sourceMaps": false,
+  "inlineEnum": true,
+  "experimentalEraseModules": false,
+  "nativeCodeBundleMode": "wasm",
+  "polyfills": {
+    "asyncFunctions": false
+  },
+  "startSceneAssetBundle": false,
+  "startScene": "88888888-8888-8888-8888-888888888888",
+  "scenes": [
+    {
+      "url": "db://assets/src/scenes/Main.scene",
+      "uuid": "88888888-8888-8888-8888-888888888888"
+    }
+  ],
+  "mainBundleIsRemote": false,
+  "useBuiltinServer": false,
+  "server": "",
+  "bundleCommonChunk": false,
+  "bundleConfigs": [],
+  "packAutoAtlas": true,
+  "useSplashScreen": true,
+  "engineModulesConfigKey": "defaultConfig",
+  "binGroupConfig": {
+    "threshold": 16,
+    "enable": false
+  },
+  "wasmCompressionMode": false,
+  "md5CacheOptions": {
+    "excludes": [],
+    "includes": [],
+    "replaceOnly": [],
+    "handleTemplateMd5Link": true
+  },
+  "overwriteProjectSettings": {
+    "macroConfig": {
+      "cleanupImageCache": "on"
+    },
+    "includeModules": {
+      "physics": "inherit-project-setting",
+      "physics-2d": "inherit-project-setting",
+      "gfx-webgl2": "off"
+    }
+  },
+  "packages": {
+    "wechatgame": {
+      "orientation": "landscape",
+      "buildOpenDataContextTemplate": "",
+      "separateEngine": false,
+      "highPerformanceMode": false
+    }
+  }
+}

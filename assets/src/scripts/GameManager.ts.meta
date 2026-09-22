@@ -1,7 +1,11 @@
 {
-  "ver": "1.1.0",
-  "uuid": "22222222-2222-2222-2222-222222222222",
+  "ver": "4.0.24",
   "importer": "typescript",
-  "isPlugin": false,
-  "assetUuid": ""
+  "imported": true,
+  "uuid": "22222222-2222-2222-2222-222222222222",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "simulateGlobals": []
+  }
 }

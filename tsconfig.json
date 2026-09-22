@@ -1,21 +1,43 @@
 {
+  // Base configuration. Do not edit this field.
+  // cc / cc-env 的类型声明改由编辑器首次导入工程时生成的 ./temp/tsconfig.cocos.json 提供。
+  // 原文中硬编码的 "paths"（cc -> ./temp/declarations/cc）指向并不存在的目录（死路径），
+  // 已按官方 empty-2d 模板写法移除，改由基线配置接管。
+  "extends": "./temp/tsconfig.cocos.json",
+
+  // Add your custom configuration here.
   "compilerOptions": {
-    "target": "ES2017",
-    "module": "ESNext",
-    "moduleResolution": "node",
-    "lib": ["ES2017", "DOM"],
-    "strict": true,
-    "noImplicitAny": false,
-    "esModuleInterop": true,
-    "experimentalDecorators": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "allowSyntheticDefaultImports": true,
-    "baseUrl": ".",
-    "paths": {
-      "cc": ["./temp/declarations/cc"],
-      "cc/env": ["./temp/declarations/cc/env"]
-    }
-  },
-  "include": ["assets/**/*"]
+    "strict": false
+  }
 }
+
+// ============================================================================
+// [信息留存] 以下为改造前 tsconfig.json 的完整原文，仅作记录、不参与编译。
+// 迁移说明：
+// - 新配置继承 ./temp/tsconfig.cocos.json（Cocos Creator 3.8.8 官方 empty-2d 模板写法）；
+// - 原 "paths" 的 cc / cc-env 为死路径，已由基线配置接管，不再作为生效字段保留；
+// - 原 "strict": true 被官方模板默认的 false 取代（如需更严格可自行改回 true）；
+// - 原 "include" 不再显式声明，由编辑器基线配置覆盖。
+//
+// {
+//   "compilerOptions": {
+//     "target": "ES2017",
+//     "module": "ESNext",
+//     "moduleResolution": "node",
+//     "lib": ["ES2017", "DOM"],
+//     "strict": true,
+//     "noImplicitAny": false,
+//     "esModuleInterop": true,
+//     "experimentalDecorators": true,
+//     "skipLibCheck": true,
+//     "forceConsistentCasingInFileNames": true,
+//     "allowSyntheticDefaultImports": true,
+//     "baseUrl": ".",
+//     "paths": {
+//       "cc": ["./temp/declarations/cc"],
+//       "cc/env": ["./temp/declarations/cc/env"]
+//     }
+//   },
+//   "include": ["assets/**/*"]
+// }
+// ============================================================================

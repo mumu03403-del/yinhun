@@ -6,7 +6,7 @@
  * 数值与规则全部对齐 H5 v2.8.0（build/publish/index.html）。
  */
 import { Node, UITransform, Graphics, Color } from 'cc';
-import { GameConfig, hexToColor } from '../data/GameConfig';
+import { GameConfig, hexToColor, fmt } from '../data/GameConfig';
 import { tierGateOk, gateGoalText } from '../data/GateConfig';
 import type { SaveState } from '../data/SaveStore';
 import { UnitView } from './UnitView';
@@ -51,6 +51,8 @@ export class MergeGrid {
   onCodexDone: ((tier: number) => void) | null = null;
   /** 解锁新行后回调（调用方通常需要重排棋盘） */
   onRowUnlocked: (() => void) | null = null;
+  /** 满级变现成功回调，参数：被变现的档位（H5 index.html:805-806 在这里放音效） */
+  onSettle: ((tier: number) => void) | null = null;
   /** 提示气泡回调，参数：文本、持续秒数 */
   onToast: ((text: string, seconds: number) => void) | null = null;
 
@@ -197,16 +199,31 @@ export class MergeGrid {
 
   // ---------- 放置与合并 ----------
 
-  /** 在已解锁区域随机空格放置一个 1 档单位，满格返回 false（index.html:640-654） */
+  /** 在已解锁区域随机空格放置一个 1 档单位，满格返回 false（index.html:638-655） */
   spawnTier1(): boolean {
     const idx = this.randomEmptyCell();
     if (idx < 0) {
-      this.toast('格子已满，先合并腾出空位', 2.0);
+      // H5 会区分「场上有满级单位」给不同的提示（index.html:643-646）
+      this.toast(
+        this.hasMaxTierUnit()
+          ? '格子已满：长按满级单位变现可腾出空位'
+          : '格子已满，先合并腾出空位',
+        2.0,
+      );
       return false;
     }
     this.setCell(idx, 1);
     this.spawns++;
     return true;
+  }
+
+  /** 已解锁区域内是否存在满级单位（index.html:1926-1929） */
+  hasMaxTierUnit(): boolean {
+    const n = this.activeCells();
+    for (let i = 0; i < n; i++) {
+      if (this.cells[i] === GameConfig.maxTier) return true;
+    }
+    return false;
   }
 
   /** 点选逻辑：先选源格，再点同档目标格即合并（index.html:1185-1205 的短按分支） */
@@ -295,7 +312,7 @@ export class MergeGrid {
     }
     const cost = this.recruitCost(tier);
     if (this.coins < cost) {
-      this.toast('金币不足，招募 ' + tier + ' 档需 ' + cost + ' 金币', 2.0);
+      this.toast('金币不足，招募 ' + tier + ' 档需 ' + fmt(cost) + ' 金币', 2.0);
       return false;
     }
     const idx = this.randomEmptyCell();
@@ -325,7 +342,7 @@ export class MergeGrid {
     if (price == null) return false;
 
     if (this.coins < price) {
-      this.toast('金币不足，解锁第' + (this.unlockedRows + 1) + '行需 ' + price + ' 金币', 2.0);
+      this.toast('金币不足，解锁第' + (this.unlockedRows + 1) + '行需 ' + fmt(price) + ' 金币', 2.0);
       return false;
     }
 
@@ -359,7 +376,8 @@ export class MergeGrid {
     this.settles++;
     if (this.selected === i) this.setSelectedView(-1);
 
-    this.toast(tier + ' 档变现 +' + gain + ' 金币（' + GameConfig.settleSeconds + ' 秒产出）', 2.2);
+    this.toast(tier + ' 档变现 +' + fmt(gain) + ' 金币（' + GameConfig.settleSeconds + ' 秒产出）', 2.2);
+    if (this.onSettle) this.onSettle(tier);
     return true;
   }
 

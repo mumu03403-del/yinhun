@@ -1,0 +1,17 @@
+{
+  "__version__": "1.0.6",
+  "general": {
+    "designResolution": {
+      "width": 812,
+      "height": 375,
+      "fitWidth": true,
+      "fitHeight": false
+    }
+  },
+  "layer": [
+    {
+      "name": "canvas_19",
+      "value": 524288
+    }
+  ]
+}

@@ -5,5 +5,9 @@
   "private": true,
   "scripts": {
     "build:wechat": "echo '请在 Cocos Creator 编辑器内执行 项目 -> 构建发布 -> 微信小游戏'"
-  }
+  },
+  "creator": {
+    "version": "3.8.8"
+  },
+  "uuid": "e9ad976d-61e7-4d36-b4c7-963096a64d74"
 }
