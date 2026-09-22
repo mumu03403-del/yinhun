@@ -1,23 +1,33 @@
 /**
  * 图鉴面板：展示 24 档角色卡，含碎片进度、每秒产出与门槛目标文案。
  * 卡片左上角为「醒目档位角标」——金边圆点 + 档位数字（对齐 H5 index.html:2235-2244）。
- * 全屏半透明遮罩 + 卡片网格，无素材依赖。
+ * 已解锁卡片的底图为该档图鉴原图，按 cover 裁剪铺满卡面（等价 H5 drawCover，
+ * index.html:2182-2189 / 2223）；资源缺失时回落纯色底板，绝不出现空白卡片。
+ * 全屏半透明遮罩 + 卡片网格。
+ * 节点分层：card（底板 Graphics）→ art（Sprite 贴图）→ fg（描边/压暗/角标 Graphics）→ 文字。
+ * Cocos 里节点自身渲染先于子节点，故三者必须拆成三层，否则贴图会盖住描边与角标。
  *
  * 说明：H5 的图鉴卡是 2 列 × 12 行可滚动（竖屏/横屏不同），
  * 这里按需求改为 3 列 × 8 行并在可用高度内动态收缩卡片，
  * 以便在竖屏下一次性完整展示 24 档（横屏版式待编辑器批次处理）。
  */
 import {
-  Node, UITransform, Label, Graphics, Color, NodeEventType,
+  Node, UITransform, Label, Sprite, Graphics, Color, NodeEventType,
   HorizontalTextAlignment, VerticalTextAlignment,
 } from 'cc';
 import { GameConfig, hexToColor } from '../data/GameConfig';
 import { codexCardUnlocked, isGateTier, gateGoalText, gateShort } from '../data/GateConfig';
 import { MergeGrid } from './MergeGrid';
+import { AssetHub } from './AssetHub';
 
 /** 单张卡片的可更新引用 */
 interface CardRef {
-  gfx: Graphics;
+  /** 底板填充层（渲染在最下） */
+  base: Graphics;
+  /** 描边 / 角标 / 文字压暗层（渲染在贴图之上） */
+  fg: Graphics;
+  /** 图鉴原图（cover 裁剪；未解锁或资源缺失时为 null） */
+  art: Sprite;
   badge: Label;
   name: Label;
   rate: Label;
@@ -106,7 +116,25 @@ export class CollectionPanel {
       );
       const cu = card.addComponent(UITransform);
       cu.setContentSize(cardW, cardH);
+      // ① 底板填充（卡片节点自身，渲染先于所有子节点）
       const cg = card.addComponent(Graphics);
+
+      // ② 图鉴原图（cover 裁剪，等价 H5 drawCover，index.html:2182-2189 / 2223）
+      const artNode = new Node('art');
+      artNode.parent = card;
+      const au = artNode.addComponent(UITransform);
+      au.setContentSize(cardW, cardH);
+      const artSp = artNode.addComponent(Sprite);
+      artSp.sizeMode = Sprite.SizeMode.CUSTOM;
+      artSp.type = Sprite.Type.SIMPLE;
+      artSp.spriteFrame = null;
+
+      // ③ 描边 / 角标 / 压暗层（创建在 art 之后 → 盖在贴图上）
+      const fgNode = new Node('fg');
+      fgNode.parent = card;
+      const fgu = fgNode.addComponent(UITransform);
+      fgu.setContentSize(cardW, cardH);
+      const fg = fgNode.addComponent(Graphics);
 
       // 角标半径：目标 19（对齐 H5），卡片过小时等比收缩避免压住文字
       let badgeR = Math.min(19, Math.floor(cardH * 0.15), Math.floor((cardW - 24) / 6));
@@ -169,7 +197,7 @@ export class CollectionPanel {
       goalLb.enableWrapText = true;
 
       this.cards.push({
-        gfx: cg, badge, name: nameLb, rate: rateLb, frag: fragLb, goal: goalLb,
+        base: cg, fg, art: artSp, badge, name: nameLb, rate: rateLb, frag: fragLb, goal: goalLb,
         tier: tierN, cardW, cardH, badgeR,
       });
     }
@@ -209,6 +237,11 @@ export class CollectionPanel {
     til.color = new Color(150, 155, 175, 255);
     til.horizontalAlign = HorizontalTextAlignment.CENTER;
     til.verticalAlign = VerticalTextAlignment.CENTER;
+
+    // 图鉴贴图异步就绪后补画一次（此前卡片回落纯色底板，不会白屏）
+    AssetHub.get().onCodexReady(() => {
+      if (this.root && this.root.isValid) this.refresh();
+    });
 
     this.refresh();
     this.root.active = false;
@@ -258,35 +291,66 @@ export class CollectionPanel {
       const done = this.grid ? !!this.grid.codexDone[tierN] : false;
       const frags = this.grid ? (this.grid.fragments[tierN] || 0) : 0;
 
-      // 卡片底板 + 档位色描边（index.html:2218-2225）
+      // 卡片底板（index.html:2218-2225）：未解锁用 rgba(255,255,255,0.06)
       const kind = hexToColor(colorHex);
-      card.gfx.clear();
-      card.gfx.fillColor = unlocked
+      const x0 = -card.cardW / 2;
+      const y0 = -card.cardH / 2;
+
+      card.base.clear();
+      card.base.fillColor = unlocked
         ? new Color(28, 28, 42, 255)          // 已解锁：#1c1c2a
         : new Color(255, 255, 255, 15);       // 未解锁：rgba(255,255,255,0.06)
-      card.gfx.roundRect(-card.cardW / 2, -card.cardH / 2, card.cardW, card.cardH, 16);
-      card.gfx.fill();
+      card.base.roundRect(x0, y0, card.cardW, card.cardH, 16);
+      card.base.fill();
 
-      card.gfx.lineWidth = 2.5;
-      card.gfx.strokeColor = new Color(kind.r, kind.g, kind.b, 255);
-      card.gfx.roundRect(-card.cardW / 2, -card.cardH / 2, card.cardW, card.cardH, 16);
-      card.gfx.stroke();
+      // 图鉴原图：cover 裁剪（等价 H5 drawCover(index.html:2182-2189) + index.html:2223）
+      // 未解锁 / 资源缺失 → null，退回纯色底板，绝不出现空白卡片
+      card.art.spriteFrame = unlocked
+        ? AssetHub.get().getCodexCover(tierN, card.cardW, card.cardH)
+        : null;
+
+      // 描边 + 压暗层 + 角标（画在贴图之上）
+      const fg = card.fg;
+      fg.clear();
+
+      if (card.art.spriteFrame) {
+        // H5 用 createLinearGradient 在文字区做压暗（index.html:2228-2232）；
+        // cc.Graphics 无渐变，改用「整卡轻压暗 + 文字带重压暗」两级近似。
+        fg.fillColor = new Color(0, 0, 0, 86);            // ≈ rgba(0,0,0,0.34)
+        fg.rect(x0, y0, card.cardW, card.cardH);
+        fg.fill();
+
+        const bandH = Math.min(card.cardH * 0.62, card.badgeR * 2 + 34);
+        const bands = 4;
+        for (let bi = 0; bi < bands; bi++) {
+          const t = (bi + 1) / bands;
+          fg.fillColor = new Color(0, 0, 0, Math.round(20 + 62 * t));
+          const hh = bandH / bands;
+          fg.rect(x0, y0 + card.cardH - (bi + 1) * hh, card.cardW, hh);
+          fg.fill();
+        }
+      }
+
+      fg.lineWidth = 2.5;
+      fg.strokeColor = new Color(kind.r, kind.g, kind.b, 255);
+      fg.roundRect(x0, y0, card.cardW, card.cardH, 16);
+      fg.stroke();
 
       // 醒目角标：档位色实心圆 + 金边（index.html:2235-2244）
       const bx = -card.cardW / 2 + 12 + card.badgeR;
       const by = card.cardH / 2 - 12 - card.badgeR;
-      card.gfx.fillColor = unlocked
+      fg.fillColor = unlocked
         ? new Color(kind.r, kind.g, kind.b, 255)
         : new Color(255, 255, 255, 31);       // rgba(255,255,255,0.12)
-      card.gfx.circle(bx, by, card.badgeR);
-      card.gfx.fill();
-      card.gfx.lineWidth = 2.5;
+      fg.circle(bx, by, card.badgeR);
+      fg.fill();
+      fg.lineWidth = 2.5;
       const gold = hexToColor(GOLD_LIGHT);
-      card.gfx.strokeColor = unlocked
+      fg.strokeColor = unlocked
         ? new Color(gold.r, gold.g, gold.b, 255)
         : new Color(255, 255, 255, 51);       // rgba(255,255,255,0.2)
-      card.gfx.circle(bx, by, card.badgeR);
-      card.gfx.stroke();
+      fg.circle(bx, by, card.badgeR);
+      fg.stroke();
 
       // 角标数字
       card.badge.string = String(tierN);

@@ -3,8 +3,9 @@
  * 自动放置、本地存档与离线收益。数值全部对齐 H5 v2.8.0（build/publish/index.html）。
  *
  * ⚠️ 挂载方式：作为组件挂在 GameRoot 节点上（由 Bootstrap 在运行时添加）。
- *   · GameAudio（scripts/Audio.ts）会自动补挂到**同一节点**上——音效 clip 需要
- *     在编辑器里给该组件挂资源，没挂时静默降级。
+ *   · GameAudio（scripts/Audio.ts）会自动补挂到**同一节点**上——音频/美术资源
+ *     由 AssetHub 从 resources bundle 按路径加载，**无需在编辑器里挂任何引用**；
+ *     资源缺失时静默降级（不报错、不阻塞）。
  *   · Hud / CollectionPanel / RecruitPanel 都是运行时纯代码构建，不需要在编辑器里挂节点。
  *
  * 本文件里对 H5 的接线对应关系：
@@ -27,6 +28,7 @@ import { Hud } from './Hud';
 import { CollectionPanel } from './CollectionPanel';
 import { RecruitPanel } from './RecruitPanel';
 import { GameAudio } from './Audio';
+import { AssetHub } from './AssetHub';
 
 const { ccclass } = _decorator;
 
@@ -77,6 +79,10 @@ export class GameManager extends Component {
 
     this.buildBackground(W, H);
 
+    // 资源预载（幂等、非阻塞）：美术/音频都从 resources bundle 按路径异步载入，
+    // 不再依赖编辑器里手工挂 @property 引用。
+    AssetHub.get().preload();
+
     // 音频组件（同节点上，缺则自动补）
     this.audio = this.node.getComponent(GameAudio) || this.node.addComponent(GameAudio);
 
@@ -94,6 +100,11 @@ export class GameManager extends Component {
 
     // 按（存档中的）已解锁行数建棋盘
     this.buildBoard(W, H);
+
+    // 棋盘贴图异步就绪后补画一次（此前回落平面色圆，不会空一格）
+    AssetHub.get().onBoardReady(() => {
+      if (this.grid) this.grid.refreshViews();
+    });
 
     // 新档：放置开局单位（index.html INITIAL_UNITS）
     if (!saved) {

@@ -5,7 +5,7 @@
  *
  * 数值与规则全部对齐 H5 v2.8.0（build/publish/index.html）。
  */
-import { Node, UITransform, Graphics, Color } from 'cc';
+import { Node, UITransform, Graphics, Color, Vec3 } from 'cc';
 import { GameConfig, hexToColor, fmt } from '../data/GameConfig';
 import { tierGateOk, gateGoalText } from '../data/GateConfig';
 import type { SaveState } from '../data/SaveStore';
@@ -44,6 +44,16 @@ export class MergeGrid {
 
   /** 当前选中的格子索引，-1 表示未选中 */
   private selected = -1;
+
+  /** 拖拽源格索引，-1 表示当前没有拖拽（H5 的 drag.from，index.html:1428） */
+  private dragFrom = -1;
+  /** 拖拽跟随手指的影子节点 */
+  private dragGhost: Node | null = null;
+  /** 当前被高亮为落点候选的格子索引，-1 表示无 */
+  private hoverIdx = -1;
+  /** 格子布局原点（`gridContent` 局部坐标里第一行第一列的中心），供命中反算使用 */
+  private startX = 0;
+  private startY = 0;
 
   /** 合并升档回调，参数：升档后的新档位 */
   onMergeUpgrade: ((tier: number) => void) | null = null;
@@ -99,9 +109,20 @@ export class MergeGrid {
     }
     this.views = [];
     this.selected = -1;
+    this.dragFrom = -1;
+    this.dragGhost = null;
+    this.hoverIdx = -1;
 
     const content = new Node('gridContent');
     content.parent = parent;
+    // ⚠️ 必须给 content 挂 UITransform：`cellIndexAtUI()` 与拖拽影子都靠
+    //    `content.getComponent(UITransform).convertToNodeSpaceAR()` 做坐标反算，
+    //    缺它会让所有命中判定静默返回 -1（拖拽看起来「完全没反应」）。
+    const cut = content.addComponent(UITransform);
+    cut.setContentSize(
+      this.cols * cellSize + (this.cols - 1) * this.gap,
+      this.unlockedRows * cellSize + (this.unlockedRows - 1) * this.gap,
+    );
     this.content = content;
 
     const rows = this.unlockedRows;
@@ -121,6 +142,8 @@ export class MergeGrid {
 
     const startX = -totalW / 2 + cellSize / 2;
     const startY = totalH / 2 - cellSize / 2;
+    this.startX = startX;
+    this.startY = startY;
 
     for (let r = 0; r < this.maxRows; r++) {
       for (let c = 0; c < this.cols; c++) {
@@ -136,6 +159,10 @@ export class MergeGrid {
         uv.init(0, cellSize);
         uv.onTap = () => this.onCellTap(idx);
         uv.onSettle = () => this.doSettle(idx);
+        // 拖拽合并（H5 index.html:1428 / 1447-1455）
+        uv.onDragStart = () => this.onDragStart(idx);
+        uv.onDragMove = (x, y) => this.onDragMove(x, y);
+        uv.onDragEnd = (x, y) => this.onDragEnd(x, y);
         // 未解锁行不显示、不响应触摸
         cell.active = r < this.unlockedRows;
         this.views[idx] = uv;
@@ -195,6 +222,123 @@ export class MergeGrid {
 
   private toast(text: string, seconds: number) {
     if (this.onToast) this.onToast(text, seconds);
+  }
+
+  // ---------- 拖拽合并（H5 index.html:1420-1455 / 2155-2180） ----------
+
+  /**
+   * 把 UI 坐标反算成格子索引（对应 H5 的 hitCell，index.html:1160-1170）。
+   * UI 坐标即 2D 场景的世界坐标，故直接换算到 `gridContent` 局部空间再按步长取整。
+   * 落在空白 / 未解锁行 → -1。
+   */
+  private cellIndexAtUI(uiX: number, uiY: number): number {
+    if (!this.content || !this.content.isValid) return -1;
+    if (!isFinite(uiX) || !isFinite(uiY)) return -1;
+    const ut = this.content.getComponent(UITransform);
+    if (!ut) return -1;
+
+    const local = ut.convertToNodeSpaceAR(new Vec3(uiX, uiY, 0));
+    const step = this.cellSize + this.gap;
+    if (!(step > 0)) return -1;
+
+    const col = Math.round((local.x - this.startX) / step);
+    const row = Math.round((this.startY - local.y) / step);
+    if (col < 0 || col >= this.cols) return -1;
+    if (row < 0 || row >= this.unlockedRows) return -1;
+
+    // 命中还需落在该格矩形内（H5 用 ±CELL/2 判定）
+    const dx = local.x - (this.startX + col * step);
+    const dy = local.y - (this.startY - row * step);
+    if (Math.abs(dx) > this.cellSize / 2 || Math.abs(dy) > this.cellSize / 2) return -1;
+
+    return row * this.cols + col;
+  }
+
+  /** 按下某个有单位的格子 → 记录拖拽源（H5 pointer.cell = i） */
+  private onDragStart(idx: number) {
+    this.dragFrom = this.inActive(idx) && this.cells[idx] > 0 ? idx : -1;
+  }
+
+  /** 拖拽移动：更新影子位置 + 高亮同档落点候选 */
+  private onDragMove(uiX: number, uiY: number) {
+    if (this.dragFrom < 0) return;
+    const from = this.dragFrom;
+    const tier = this.cells[from];
+    if (tier <= 0) { this.endDrag(); return; }
+
+    this.ensureGhost(tier, uiX, uiY);
+
+    // 落点候选：同档、非源格、且未满级（H5 index.html:2161-2166 的高亮条件）
+    const target = this.cellIndexAtUI(uiX, uiY);
+    let want = -1;
+    if (target >= 0 && target !== from && this.cells[target] === tier && tier < GameConfig.maxTier) {
+      want = target;
+    }
+    this.setHoverHint(want);
+  }
+
+  /** 抬起：把源格合并到落点（H5 index.html:1447-1455） */
+  private onDragEnd(uiX: number, uiY: number) {
+    const from = this.dragFrom;
+    this.endDrag();
+    if (from < 0) return;
+
+    const target = this.cellIndexAtUI(uiX, uiY);
+    if (target >= 0 && target !== from) {
+      this.doMerge(from, target);
+    }
+  }
+
+  /** 收尾：销毁影子、清高亮、复位拖拽状态 */
+  private endDrag() {
+    this.setHoverHint(-1);
+    if (this.dragGhost && this.dragGhost.isValid) {
+      this.dragGhost.destroy();
+    }
+    this.dragGhost = null;
+    this.dragFrom = -1;
+  }
+
+  /** 建立 / 移动跟随手指的拖拽影子（H5 drawDragGhost，index.html:2155-2180） */
+  private ensureGhost(tier: number, uiX: number, uiY: number) {
+    if (!this.content || !this.content.isValid) return;
+    if (!this.dragGhost || !this.dragGhost.isValid) {
+      const n = new Node('dragGhost');
+      n.parent = this.content;
+      const uv = n.addComponent(UnitView);
+      uv.init(tier, this.cellSize, false);   // 影子不吃触摸
+      this.dragGhost = n;
+    }
+    const ut = this.content.getComponent(UITransform);
+    if (!ut) return;
+    const local = ut.convertToNodeSpaceAR(new Vec3(uiX, uiY, 0));
+    // H5 把影子画在手指上方 10px（index.html:2178 的 `- 10`，屏幕 y 向下 → Cocos 为 +10）
+    this.dragGhost.setPosition(local.x, local.y + 10, 0);
+  }
+
+  /** 切换落点高亮（-1 = 清除） */
+  private setHoverHint(idx: number) {
+    if (this.hoverIdx === idx) return;
+    if (this.hoverIdx >= 0) {
+      const old = this.views[this.hoverIdx];
+      if (old && old.isValid) old.setDropHint(false);
+    }
+    this.hoverIdx = idx;
+    if (idx >= 0) {
+      const cur = this.views[idx];
+      if (cur && cur.isValid) cur.setDropHint(true);
+    }
+  }
+
+  /**
+   * 把数据模型重新同步到所有格子视图。
+   * 用于棋盘贴图**异步就绪**后刷新（AssetHub 的 board 分组完成时由 GameManager 调用）。
+   */
+  refreshViews() {
+    for (let i = 0; i < this.cells.length; i++) {
+      const v = this.views[i];
+      if (v && v.isValid) v.setTier(this.cells[i]);
+    }
   }
 
   // ---------- 放置与合并 ----------

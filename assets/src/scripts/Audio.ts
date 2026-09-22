@@ -1,12 +1,10 @@
 /**
  * 音频组件：把 H5 v2.8.0 的音效系统移植到 Cocos Creator 3.8.8。
  *
- * ⚠️ 挂载方式（编辑器手动步骤，必须做）：
- *   在场景里选中 GameRoot 节点（Bootstrap / GameManager 所在的那个节点），
- *   「添加组件」→ GameAudio；然后在属性面板里挂 clip：
- *     · sfxClips   ：按 clip **资源名** 索引，命名必须是 sfx_merge / sfx_unlock / sfx_settle
- *     · voiceClips ：按 **档位 - 1** 索引（长度 24），索引 12..23 在 H5 里本来就没有音频，留空即可
- *   音频文件尚未导入工程时本组件必须静默降级（不报错、不卡住）——这是已知状态。
+ * 资源来源（v2.9.0 起改为**纯代码加载**，不再要求编辑器手动挂 clip）：
+ *   通过 `AssetHub` 从 `assets/resources/audio/**` 异步载入，见 AssetHub.ts 的映射表。
+ *   若某个 clip 同时在编辑器里被手工指到 `sfxClips` / `voiceClips` 上，
+ *   则以**手工指定的为准**（保留这条覆盖通道，便于将来替换素材）。
  *
  * 与 H5 的对应关系（真源：build/publish/index.html v2.8.0 + build/publish/assets/js/audio.js）：
  *   playSfx(name)          ← index.html:1104-1119（sfxCache + assets/audio/<name>.mp3）
@@ -21,6 +19,7 @@
  *   —— audio.js:42-101 / 106-123 全部用 OscillatorNode 现场合成，Cocos 侧无等价资产，故不移植。
  */
 import { _decorator, Component, AudioClip, AudioSource, sys } from 'cc';
+import { AssetHub } from './AssetHub';
 
 const { ccclass, property } = _decorator;
 
@@ -48,11 +47,11 @@ export const VOICE_CLIP_NAMES: (string | null)[] = [
 
 @ccclass('GameAudio')
 export class GameAudio extends Component {
-  /** 音效 clip（按 clip.name 建索引；命名须与 SFX_NAMES 一致） */
+  /** 音效 clip（可选覆盖通道：按 clip.name 索引，命名须与 SFX_NAMES 一致）。留空即走 AssetHub。 */
   @property([AudioClip])
   sfxClips: AudioClip[] = [];
 
-  /** 各档原声 clip，索引 = 档位 - 1（对应 VOICE_CLIP_NAMES） */
+  /** 各档原声 clip（可选覆盖通道），索引 = 档位 - 1（对应 VOICE_CLIP_NAMES）。留空即走 AssetHub。 */
   @property([AudioClip])
   voiceClips: AudioClip[] = [];
 
@@ -63,14 +62,27 @@ export class GameAudio extends Component {
   /** 是否开启声音；来自 localStorage（audio.js:2-4），默认开启。
    *  注意：不能叫 `enabled` —— cc.Component 已经有公开的 `enabled` 属性。 */
   private soundOn = true;
+
+  /**
+   * H5 的全局静音开关（index.html:1088/1106 与 GinAudio.isEnabled() 构成双闸）。
+   * H5 里它由静音按钮直接翻转；这里保持**内部字段**（对外不加 setter），
+   * 由 `setEnabled` / `toggleEnabled` 一并驱动，语义与 H5 等价。
+   */
+  private muted = false;
+
   /** AudioSource 惰性获取 */
   private source: AudioSource | null = null;
-  /** sfx 名字 → clip 的惰性索引 */
+  /** sfx 名字 → clip 的惰性索引（手工指定优先） */
   private sfxByName: { [name: string]: AudioClip } = {};
-  private sfxIndexBuilt = false;
+  /** 手工指定的 voice oversides 索引 */
+  private voiceOverride: { [tier: number]: AudioClip } = {};
+  private overrideBuilt = false;
 
   onLoad() {
     this.soundOn = this.readEnabled();
+    this.muted = !this.soundOn;
+    // 触发资源预载（幂等）；音频就绪后无需额外动作——播放时按需取用
+    AssetHub.get().preload();
   }
 
   // ---------- 开关（audio.js:2-4 / 38-39） ----------
@@ -82,6 +94,7 @@ export class GameAudio extends Component {
   /** 设置开关并持久化；关闭时停掉正在播的声音（audio.js:38） */
   setEnabled(v: boolean) {
     this.soundOn = !!v;
+    this.muted = !this.soundOn;   // 与 H5 双闸保持一致
     try {
       sys.localStorage.setItem(ENABLED_KEY, this.soundOn ? '1' : '0');
     } catch (e) {
@@ -117,11 +130,11 @@ export class GameAudio extends Component {
    * 名字不存在 / 静音 / clip 未导入 → 静默返回，绝不抛异常。
    */
   playSfx(name: string) {
-    if (!this.soundOn) return;
+    if (!this.canPlay()) return;
     if (!name) return;
     try {
-      this.buildSfxIndex();
-      const clip = this.sfxByName[name];
+      this.buildOverrideIndex();
+      const clip = this.sfxByName[name] || AssetHub.get().getSfx(name);
       if (!clip) return;                       // 资源尚未导入：静默降级
       const src = this.getSource();
       if (!src) return;
@@ -136,13 +149,13 @@ export class GameAudio extends Component {
    * 越界 / 该档无原声（H5 tier13-24 为 null）/ 静音 → 静默返回。
    */
   playVoice(tier: number) {
-    if (!this.soundOn) return;
+    if (!this.canPlay()) return;
     if (!(tier >= 1)) return;
     try {
       const idx = Math.floor(tier) - 1;
-      if (idx < 0 || idx >= this.voiceClips.length) return;   // 未导入：静默降级
-      const clip = this.voiceClips[idx];
-      if (!clip) return;
+      this.buildOverrideIndex();
+      const clip = this.voiceOverride[tier] || AssetHub.get().getVoice(tier);
+      if (!clip) return;                       // 未导入：静默降级
       const src = this.getSource();
       if (!src) return;
       src.playOneShot(clip, this.volume);
@@ -152,6 +165,11 @@ export class GameAudio extends Component {
   }
 
   // ---------- 内部 ----------
+
+  /** 双闸：muted 与 soundOn 任一为「关」都不出声（index.html:1088/1106） */
+  private canPlay(): boolean {
+    return this.soundOn && !this.muted;
+  }
 
   /** 惰性取 AudioSource（挂在同一节点上，缺失时自行补一个） */
   private getSource(): AudioSource | null {
@@ -165,16 +183,33 @@ export class GameAudio extends Component {
     }
   }
 
-  /** 用 clip.name 建「名字 → clip」索引（只建一次；编辑器里改过 clip 后可手动清空重建） */
-  private buildSfxIndex() {
-    if (this.sfxIndexBuilt) return;
-    this.sfxIndexBuilt = true;
-    const list = this.sfxClips || [];
-    for (let i = 0; i < list.length; i++) {
-      const clip = list[i];
+  /**
+   * 用编辑器手工指定的 clip 建索引（**覆盖通道**，优先级高于 AssetHub）。
+   * sfx 按 clip.name 索引；voice 按 VOICE_CLIP_NAMES 的名字反查档位。
+   */
+  private buildOverrideIndex() {
+    if (this.overrideBuilt) return;
+    this.overrideBuilt = true;
+
+    const sfxList = this.sfxClips || [];
+    for (let i = 0; i < sfxList.length; i++) {
+      const clip = sfxList[i];
       if (!clip) continue;
       const n = clip.name;
       if (n && this.sfxByName[n] === undefined) this.sfxByName[n] = clip;
+    }
+
+    const voiceList = this.voiceClips || [];
+    for (let i = 0; i < voiceList.length; i++) {
+      const clip = voiceList[i];
+      if (!clip) continue;
+      const n = clip.name;
+      for (let t = 1; t <= VOICE_CLIP_NAMES.length; t++) {
+        if (VOICE_CLIP_NAMES[t - 1] === n) {
+          this.voiceOverride[t] = clip;
+          break;
+        }
+      }
     }
   }
 }
