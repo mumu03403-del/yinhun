@@ -1274,6 +1274,7 @@
     pointer.moved = false;
     pointer.settled = false;
     pointer.cell = -1;
+    pointer.scrollLastY = p.y;   // 滚动基准（图鉴/招募弹层），缺此值首个 pointermove 会算出 NaN 并永久污染 scrollY
 
     // 新手引导：首次点击任意处关闭并标记为已读（B2）
     if (showTut) {
@@ -1326,18 +1327,6 @@
       if (window.GinAudio) GinAudio.click(); detailOpen = false; return;   // 点击空白处返回图鉴
     }
 
-    if (recruitOpen) {
-      if (hitRect(p, CODEX_CLOSE_BTN)) { if (window.GinAudio) GinAudio.click(); recruitOpen = false; return; }
-      for (var ri = 0; ri < recruitRects.length; ri++) {
-        var rr2 = recruitRects[ri];
-        if (hitRect(p, rr2.rect)) {
-          if (rr2.unlocked) { if (window.GinAudio) GinAudio.click(); recruitTier(rr2.tier); }
-          else { toast = { text: '需先合出 ' + rr2.tier + ' 档才能招募', t: 1.8 }; }
-          return;
-        }
-      }
-      recruitOpen = false; return;   // 点击空白关闭
-    }
       if (hitRect(p, COLL_BTN)) { if (window.GinAudio) GinAudio.click(); collectionOpen = false; return; }
       if (hitRect(p, CODEX_CLOSE_BTN)) { if (window.GinAudio) GinAudio.click(); collectionOpen = false; return; }
       var hitCard = false;
@@ -1351,6 +1340,20 @@
       }
       if (!hitCard) collectionOpen = false;
       return;
+    }
+
+    // 高级招募弹层（真模态）：与图鉴弹层同级，独立分发并 return，点击不穿透到下层按钮
+    if (recruitOpen) {
+      if (hitRect(p, CODEX_CLOSE_BTN)) { if (window.GinAudio) GinAudio.click(); recruitOpen = false; return; }
+      for (var ri = 0; ri < recruitRects.length; ri++) {
+        var rr2 = recruitRects[ri];
+        if (hitRect(p, rr2.rect)) {
+          if (rr2.unlocked) { if (window.GinAudio) GinAudio.click(); recruitTier(rr2.tier); }
+          else { toast = { text: '需先合出 ' + rr2.tier + ' 档才能招募', t: 1.8 }; }
+          return;
+        }
+      }
+      recruitOpen = false; return;   // 点击空白关闭
     }
 
     if (legendOpen) {
