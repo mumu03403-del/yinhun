@@ -1,6 +1,6 @@
 /**
  * 高级招募弹层：对齐 H5 v2.8.0 的 drawRecruitOverlay()（build/publish/index.html:2270-2329）
- * 与弹层点击处理（index.html:1329-1340）。
+ * 与弹层点击处理（index.html:1346-1357）。
  *
  * ⚠️ 挂载方式：与 CollectionPanel 同风格，是一个**纯代码类（非 @ccclass 组件）**，
  *   由 GameManager.setup() 在运行时 `new RecruitPanel()` + `build(...)` 构建，
@@ -185,6 +185,7 @@ export class RecruitPanel {
     root.on(NodeEventType.TOUCH_START, (ev: EventTouch) => this.onRootTouchStart(ev));
     root.on(NodeEventType.TOUCH_MOVE, (ev: EventTouch) => this.onRootTouchMove(ev));
     root.on(NodeEventType.TOUCH_END, () => this.onRootTouchEnd());
+    root.on(NodeEventType.TOUCH_CANCEL, () => this.onRootTouchCancel());
 
     this.refresh();
     this.root.active = false;
@@ -242,14 +243,29 @@ export class RecruitPanel {
     }
   }
 
+  /**
+   * 抬起：只有「起于空白的一次短按」才算点击空白关闭。
+   * 判定对齐 H5 的「滑动 / 点击」分离（index.html:1405-1408 的 pointer.moved 阈值、
+   * 1418-1426 的滚动分支）：本次手势一旦被判为滑动，抬起就只结束滚动，不关闭弹层。
+   */
   private onRootTouchEnd() {
-    if (this.startedOnCard) {
-      // 起点在卡片上：交给卡片自己的点击处理，这里不关闭
-      this.startedOnCard = false;
-      return;
-    }
-    if (!this.visible) return;   // 关闭按钮已经关过了（事件冒泡到根节点），不重复回调
-    this.hide();                 // 点空白关闭（index.html:1339）
+    const scrolled = this.moved;
+    const fromCard = this.startedOnCard;
+    this.moved = false;
+    this.startedOnCard = false;
+    if (scrolled || fromCard) return;   // 滑动结束 / 起点在卡片：交给卡片自己的点击处理，不关闭
+    if (!this.visible) return;          // 关闭按钮已经关过了（事件冒泡到根节点），不重复回调
+    this.hide();                        // 点空白关闭（index.html:1356）
+  }
+
+  /**
+   * 手势被取消（典型：起于卡片、滑出卡片后抬起 —— 卡片侧只会收到 TOUCH_CANCEL，
+   * TOUCH_END 两个回调都不会触发）。必须在这里复位手势标志，否则 startedOnCard 会残留，
+   * 把下一次「点空白关闭」吞掉。H5 同样在 pointercancel 里复位手势状态（index.html:1459-1464）。
+   */
+  private onRootTouchCancel() {
+    this.moved = false;
+    this.startedOnCard = false;
   }
 
   /** 卡片抬起：滑动则不当作点击（index.html:1408/1417） */
@@ -259,7 +275,7 @@ export class RecruitPanel {
     if (!grid) return;
 
     if (grid.highestTier < tier) {
-      // index.html:1335
+      // index.html:1351-1352（未解锁档位点按 → toast 1.8s）
       if (this.onToast) this.onToast('需先合出 ' + tier + ' 档才能招募', 1.8);
       return;
     }

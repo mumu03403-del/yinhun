@@ -30,10 +30,30 @@ import { GameAudio } from './Audio';
 
 const { ccclass } = _decorator;
 
-/** 布局常量（与 index.html 的 margin / topBarH 对应） */
-const MARGIN = 24;
-const TOP_BAR_H = 70;
-const SPAWN_BTN_H = 48;
+/**
+ * 布局常量 —— 全部照抄 H5 v2.8.0 的 812×375 逻辑舞台（build/publish/index.html），
+ * 使 Cocos 版与 H5 版落在同一套舞台坐标系里（Hud.ts 用的也是这套换算）。
+ *
+ * ⚠️ 关键：棋盘的**水平可用区不是整屏宽**，而是「棋盘区」BOARD_X0..BOARD_X1：
+ *   REGION_W = BOARD_X1 - BOARD_X0 = 454（index.html:150-152），
+ *   右侧面板自 PANEL_X = 478 起（index.html:158 → Hud.ts:44 PANEL_RECT.x）。
+ *   旧实现用 W - MARGIN*2（整屏宽）算格子尺寸并整屏居中，棋盘右半因此被面板压住。
+ */
+const DESIGN_W = 812;                         // index.html:142
+const DESIGN_H = 375;                         // index.html:143
+const CELL_MAX = 86;                          // 单格上限（index.html:147）
+const BOARD_X0 = 12;                          // 棋盘区左边界（index.html:150）
+const BOARD_X1 = 466;                         // 棋盘区右边界（index.html:151）
+const REGION_W = BOARD_X1 - BOARD_X0;         // 454（index.html:152）
+const REGION_TOP = 46;                        // 棋盘区上边界（index.html:153）
+const REGION_BOTTOM = 366;                    // 棋盘区下边界（index.html:154）
+const REGION_H = REGION_BOTTOM - REGION_TOP;  // 320（index.html:155）
+/**
+ * 格间距：必须与 MergeGrid.build 内部实际使用的 gap 完全一致（MergeGrid.ts:22 gap = 8），
+ * 否则「按 REGION_W 算出的格子尺寸」与「实际渲染出的棋盘宽度」对不上，居中量算会偏。
+ * （H5 的 GAP 是 6；Cocos 侧不动物理渲染代码，这里统一取 8。）
+ */
+const BOARD_GAP = 8;
 /** 存档节流：每 N 秒落盘一次 */
 const SAVE_INTERVAL_SEC = 2;
 
@@ -140,32 +160,55 @@ export class GameManager extends Component {
 
   /**
    * 依据当前已解锁行数计算格子尺寸并（重）建棋盘。
-   * 对应 H5 的 recomputeLayout()：行数变化时格子尺寸随之变化。
-   *
-   * 注：H5 的棋盘固定在左侧棋盘区（BOARD_X0..BOARD_X1，index.html:150-155），
-   * 移植版目前仍是「整屏居中」的竖屏适配版式，尚未搬进同一 812×375 舞台坐标系
-   * （与右侧面板的横屏对齐是下一批次的事）。
+   * 逐条对齐 H5 的 recomputeLayout()（index.html:176-211）：
+   *   cellW  = floor((REGION_W - (COLS-1)*GAP) / COLS)   ← 用「棋盘区宽度」，不是整屏宽
+   *   cellH  = floor((regionAvailH - (rows-1)*GAP) / rows)
+   *   CELL   = min(CELL_MAX, cellH, cellW)
+   *   GRID_X = BOARD_X0 + (REGION_W - GRID_W)/2           ← 在自己的棋盘区内水平居中
+   * 与 H5 的唯一差异：regionAvailH 不再扣除「未解锁行锁定迷你格预留条」（index.html:186-187），
+   * 因为本移植版的锁定行整行 active=false、什么都不画。棋盘因此恒落在
+   * [BOARD_X0, BOARD_X1] × [REGION_TOP, REGION_BOTTOM] 内，与右侧面板（PANEL_X=478 起）
+   * 全程无重叠；行数 5→10 逐档验算（cell = 57/46/38/33/28/24，totalH ≤ 320）均不越界。
    */
   private buildBoard(W: number, H: number) {
+    const cols = GameConfig.gridCols;
     const rows = Math.max(1, this.grid.unlockedRows);
 
-    const availW = W - MARGIN * 2;
-    const availH = H - TOP_BAR_H - SPAWN_BTN_H - MARGIN * 3;
-    let cell = Math.floor(Math.min(
-      availW / GameConfig.gridCols - 8,
-      availH / rows - 8,
-    ));
-    if (!isFinite(cell) || cell < 40) cell = 40;
+    // 与 Hud.build 相同的舞台换算系数（Hud.ts:158-161）；设计分辨率 812×375 下 k=1
+    const kRaw = Math.min(W / DESIGN_W, H / DESIGN_H);
+    const k = isFinite(kRaw) && kRaw > 0 ? kRaw : 1;
 
-    const totalH = rows * cell + (rows - 1) * 8;
-    const centerY = (H / 2 - TOP_BAR_H - MARGIN) - totalH / 2;
+    // 1) 单格尺寸：宽度受「棋盘区宽度」约束，高度受「棋盘区可用高度」约束。
+    //    注：H5 的 recomputeLayout() 还会从可用高度里再扣掉「未解锁行的锁定迷你格预留条」
+    //    （index.html:186-187）。本移植版不绘制锁定格（MergeGrid.build 里整行
+    //    `cell.active = r < unlockedRows`），没有东西要画，故不预留这条空白带。
+    //    若将来补上锁定迷你格，应改回 REGION_H - (lockZoneH + LOCK_ZONE_GAP)
+    //    （lockZoneH = min(108, 22 + 未解锁行数 * 20)，LOCK_ZONE_GAP = 8）。
+    const regionAvailH = REGION_H;
+    const cellH = Math.floor((regionAvailH - (rows - 1) * BOARD_GAP) / rows);
+    const cellW = Math.floor((REGION_W - (cols - 1) * BOARD_GAP) / cols);
+    let cell = Math.min(CELL_MAX, cellH, cellW);
+    if (!isFinite(cell) || cell < 12) cell = 12;
+    const cellPx = cell * k;
+
+    // 2) 棋盘外框（gap 与 MergeGrid.build 内部一致，保证居中量算不偏）
+    const totalW = cols * cellPx + (cols - 1) * BOARD_GAP;
+    const totalH = rows * cellPx + (rows - 1) * BOARD_GAP;
+    const regionW = REGION_W * k;
+    const availH = regionAvailH * k;
+
+    // 3) H5（左上原点）棋盘左上角 → 在自己的可用区域内居中 → Cocos（中心原点、y 向上）
+    const gridLeft = BOARD_X0 * k + (regionW - totalW) / 2;
+    const gridTop = REGION_TOP * k + (availH - totalH) / 2;
+    const cx = gridLeft + totalW / 2 - (DESIGN_W * k) / 2;
+    const cy = (DESIGN_H * k) / 2 - gridTop - totalH / 2;
 
     if (!this.gridRoot || !this.gridRoot.isValid) {
       this.gridRoot = new Node('gridRoot');
       this.gridRoot.parent = this.node;
     }
-    this.gridRoot.setPosition(0, centerY, 0);
-    this.grid.build(this.gridRoot, cell);
+    this.gridRoot.setPosition(cx, cy, 0);
+    this.grid.build(this.gridRoot, cellPx);
   }
 
   // ---------- 定时器 ----------
@@ -318,7 +361,15 @@ export class GameManager extends Component {
     g.roundRect(-(W - 40) / 2, -22, W - 40, 44, 10);
     g.fill();
 
-    const l = n.addComponent(Label);
+    // ⚠️ Graphics 与 Label 都派生自 UIRenderer，而一个节点只能注册一个可渲染组件：
+    // 第二个会被引擎 warnID 12002 拒绝（"Can't add renderable component to this node
+    // because it already have one."），结果气泡只剩黑底、文字完全不渲染。
+    // 因此文字挂在子节点上 —— 与本项目其余面板（Hud / RecruitPanel / UnitView）一致。
+    const lblNode = new Node('toastLabel');
+    lblNode.parent = n;
+    const lu = lblNode.addComponent(UITransform);
+    lu.setContentSize(W - 40, 44);
+    const l = lblNode.addComponent(Label);
     l.string = text;
     l.fontSize = 20;
     l.lineHeight = 24;
