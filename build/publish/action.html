@@ -102,7 +102,8 @@
   var GRAV = 940;               // 重力
   var RNG_DMG = 16;             // 远程 单次伤害
   var RNG_SPD = 320;            // 远程 飞行速度 px/s
-  var RNG_CD = 0.55;            // 远程 冷却（秒）
+  var RNG_CD = 0.9;             // 远程 冷却（秒）（#3：加长冷却）
+  var RNG_MAX = 3;              // 远程 同时存在弹体上限（#3：数量限制）
   var RNG_R = 9;                // 远程 弹体半径
 
   // ---------- 屏幕状态 ----------
@@ -354,6 +355,7 @@
       spd: levelCfg.bossSpd, dps: levelCfg.bossDPS,
       atkDmg: levelCfg.bossAtkDmg,
       atkTimer: 2.0, windup: 0, windupMax: 0.6,
+      ultTimer: 6, ultWindup: 0, ultDmg: 30 + curLevel * 3,   // #3：大招（蓄力 1.15s，跳跃可躲）
       dir: -1, flash: 0,
       kbx: 0, kbT: 0, strike: 0                  // 受击击退 / 命中挥击
     };
@@ -404,6 +406,9 @@
 
   function tryRanged() {
     if (screen !== 'playing' || player.rngCd > 0) return;
+    var alive = 0;                                    // #3：同屏弹体数量限制
+    for (var i = 0; i < projectiles.length; i++) if (projectiles[i].from === 'player') alive++;
+    if (alive >= RNG_MAX) { toast = { text: '弹体已达上限（' + RNG_MAX + '）', t: 0.7 }; return; }
     player.rngCd = RNG_CD;
     projectiles.push({
       x: player.facing > 0 ? player.x + player.w : player.x,
@@ -568,7 +573,7 @@
     var px = player.x + player.w / 2, bx = b.x + b.w / 2;
     var dir = px < bx ? -1 : 1;
     b.dir = dir;
-    if (Math.abs(px - bx) > b.w / 2 + player.w / 2 - 2) b.x += dir * b.spd * dt;
+    if (b.ultWindup <= 0 && Math.abs(px - bx) > b.w / 2 + player.w / 2 - 2) b.x += dir * b.spd * dt;   // 大招蓄力时定身
     if (aabb(b, player)) player.hp -= b.dps * dt;
     b.atkTimer -= dt;
     if (b.windup > 0) {
@@ -584,6 +589,27 @@
       else b.atkTimer = 0.5;
     }
     if (b.flash > 0) b.flash -= dt;
+    // 大招（#3）：蓄力 1.15s 全屏冲击波，跳跃可躲；随后进 9s 冷却
+    if (b.ultWindup > 0) {
+      b.ultWindup -= dt;
+      if (b.ultWindup <= 0) {
+        whiteFlash = 0.5; shake = 0.8; gSweep(320, 60, 0.6, 0.7);
+        if (player.onGround) {
+          player.hp -= b.ultDmg; player.hurt = 0.22;
+          floats.push({ x: player.x + player.w / 2, y: player.y - 6, t: 0, dur: 1.1, text: '-' + Math.round(b.ultDmg), color: '#ff6a5b' });
+        } else {
+          floats.push({ x: player.x + player.w / 2, y: player.y - 6, t: 0, dur: 1.0, text: '闪避！', color: '#5fe08f' });
+        }
+        b.ultTimer = 9;
+      }
+    } else {
+      b.ultTimer -= dt;
+      if (b.ultTimer <= 0) {
+        b.ultWindup = 1.15;
+        toast = { text: '⚠ ' + charName(bossTier()) + ' 蓄力大招——起跳躲避！', t: 1.2 };
+        gSweep(120, 400, 0.5, 0.5);
+      }
+    }
     if (b.fireCd === undefined) b.fireCd = 2.4;
     if (b.fireCd > 0) b.fireCd -= dt;
     if (curLevel >= 4 && b.fireCd <= 0 && Math.abs(px - bx) > b.w / 2 + player.w / 2) {
@@ -809,7 +835,16 @@
     ctx.beginPath(); ctx.ellipse(bx + p.w / 2, GY + 2, p.w / 2 + 6, 6, 0, 0, Math.PI * 2); ctx.fill();
     if (spriteOK(1)) {
       var side = p.h * 1.3;                       // 立绘稍大于碰撞盒，更有存在感
+      ctx.save();
+      if (p.swing > 0) {                          // 挥砍：人物整体前倾（#3 用户需求）
+        var tp = p.swing / ATK_SWING;
+        ctx.translate(bx + p.w / 2, p.y + p.h);
+        ctx.rotate(Math.sin(tp * Math.PI) * 0.14 * (p.facing > 0 ? 1 : -1));
+        ctx.translate(-(bx + p.w / 2), -(p.y + p.h));
+      }
       drawSprite(1, bx + p.w / 2, p.y + p.h, side, p.facing < 0);
+      ctx.restore();
+      if (p.swing > 0) drawSwordSwing(bx, p);     // 挥舞木刀
       text('坂田银时', bx + p.w / 2, p.y + p.h - side - 9, 10, '#f7d774', 'center', '700');
     } else {
       var g = ctx.createLinearGradient(bx, p.y, bx, p.y + p.h);
@@ -827,6 +862,7 @@
       ctx.moveTo(bx + p.w / 2, p.y + 12);
       ctx.lineTo(bx + p.w / 2 + dir * 48, p.y - 18);
       ctx.stroke();
+      if (p.swing > 0) drawSwordSwing(bx, p);     // 挥舞木刀
     }
     // 挥击高亮 + 金色斩击弧
     if (p.swing > 0) {
@@ -939,6 +975,13 @@
       var zx = b.dir > 0 ? b.x : b.x - range;
       ctx.fillRect(zx, b.y - 6, range, b.h + 12);
     }
+    // 大招蓄力全屏警示（#3）：红幕脉冲 + 提示，跳跃可躲
+    if (b.ultWindup > 0) {
+      var pu = 0.16 + 0.12 * Math.abs(Math.sin(b.ultWindup * 14));
+      ctx.fillStyle = 'rgba(216,74,59,' + pu.toFixed(3) + ')';
+      ctx.fillRect(0, GY - 150, W, 150);
+      serifText('⚠ 大招蓄力 · 起跳躲避！', W / 2, GY - 118, 22, '#ff6a5b', 'center', '800');
+    }
   }
 
   // ---------- 屏幕 ----------
@@ -989,6 +1032,21 @@
     drawControl(BTN_JUMP, '⤒', '#5fe08f');
     drawControl(BTN_ATK, '平A', PAL.gold2);
     drawControl(BTN_RANGED, '远程', '#ff9b3a');
+    // 远程状态（#3）：冷却遮罩 + 弹量余点，让限制可见
+    var alive = 0;
+    for (var i = 0; i < projectiles.length; i++) if (projectiles[i].from === 'player') alive++;
+    if (player.rngCd > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.45 * (player.rngCd / RNG_CD);
+      fillRR(BTN_RANGED.x, BTN_RANGED.y, BTN_RANGED.w, BTN_RANGED.h, 16, '#000000');
+      ctx.restore();
+    }
+    for (var pi3 = 0; pi3 < RNG_MAX; pi3++) {
+      var pipX = BTN_RANGED.x + BTN_RANGED.w / 2 + (pi3 - (RNG_MAX - 1) / 2) * 12;
+      ctx.beginPath(); ctx.arc(pipX, BTN_RANGED.y + BTN_RANGED.h - 7, 3, 0, Math.PI * 2);
+      ctx.fillStyle = pi3 < (RNG_MAX - alive) ? '#ffd23a' : 'rgba(255,210,58,0.22)';
+      ctx.fill();
+    }
     drawControl(PLAY_MENU, '菜单', PAL.dim);
   }
 
@@ -1160,15 +1218,51 @@
     ctx.restore();
   }
 
+  // 弹窗框（与 index.html 同款：深底 + 金边 + 明朝体标题）——B2 回归修复：此前 action.html 缺失该函数导致黑屏
+  function popupFrame(x, y, w, h, title) {
+    fillRR(x, y, w, h, 14, '#1c1c2a');
+    ctx.save();
+    if (rr(x, y, w, h, 14)) ctx.clip();
+    var hg = ctx.createLinearGradient(0, y, 0, y + 44);
+    hg.addColorStop(0, '#241d10');
+    hg.addColorStop(1, '#191509');
+    ctx.fillStyle = hg;
+    ctx.fillRect(x, y, w, 44);
+    ctx.fillStyle = '#e8c15a';
+    ctx.fillRect(x, y + 44, w, 2);
+    ctx.restore();
+    strokeRR(x, y, w, h, 14, '#e8c15a', 2);
+    text(title, x + w / 2, y + 29, 19, '#e8c15a', 'center', '800', SERIF);
+  }
+
+  // 挥舞武器（洞爷湖木刀）：swing 期间刀身从举过头劈到前下方（#3 用户需求）
+  function drawSwordSwing(bx, p) {
+    var prog = p.swing / ATK_SWING;            // 1→0
+    var dir = p.facing;
+    var hx = bx + p.w / 2 + dir * 8, hy = p.y + p.h * 0.42;
+    var a0 = dir > 0 ? -1.9 : Math.PI + 1.9;   // 起手：举刀过头
+    var a1 = dir > 0 ? 0.7 : Math.PI - 0.7;    // 收势：劈至前下
+    var ang = a0 + (a1 - a0) * (1 - prog);
+    var len = 54;
+    var tx = hx + Math.cos(ang) * len, ty = hy + Math.sin(ang) * len;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#caa472'; ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(tx, ty); ctx.stroke();
+    ctx.strokeStyle = '#f2ead8'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(tx, ty); ctx.stroke();
+    ctx.restore();
+  }
+
   function drawActTutorial() {
     ctx.fillStyle = 'rgba(6,6,12,0.84)';
     ctx.fillRect(0, 0, W, H);
     var pw = 560, ph = 280, px = (W - pw) / 2, py = (H - ph) / 2 - 8;
     popupFrame(px, py, pw, ph, '战斗指引');
-    text('左右移动，点击或自动平A 攻击敌人', px + pw / 2, py + 66, 14, '#e7ecf5', 'center', '600');
-    text('点「远程」按钮或按 K 发射弹体，可隔空输出', px + pw / 2, py + 100, 14, '#e7ecf5', 'center', '600');
-    text('击败所有波次与 Boss 即通关，角色血量随关卡提升', px + pw / 2, py + 134, 14, '#e7ecf5', 'center', '600');
-    text('受击会红闪、命中会顿帧——注意走位', px + pw / 2, py + 168, 13, '#9a9ab0', 'center', '500');
+    text('左右移动，点击或自动平A 攻击敌人（挥刀有前倾与刀光）', px + pw / 2, py + 62, 14, '#e7ecf5', 'center', '600');
+    text('远程有冷却与弹量上限（按钮下黄点=余弹），合理穿插输出', px + pw / 2, py + 94, 14, '#e7ecf5', 'center', '600');
+    text('Boss 会放全屏大招：红幕蓄力时「起跳」即可躲避', px + pw / 2, py + 126, 14, '#e7ecf5', 'center', '600');
+    text('击败所有波次与 Boss 即通关，受击会红闪、命中会顿帧', px + pw / 2, py + 158, 13, '#9a9ab0', 'center', '500');
     drawButton({ x: W / 2 - 90, y: py + ph - 60, w: 180, h: 46 }, '开始战斗', '#e8c15a');
   }
 
