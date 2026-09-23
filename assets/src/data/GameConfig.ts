@@ -50,15 +50,30 @@ export function contrastText(hex: string): string {
   return contrastRatio(1, L) >= contrastRatio(L, srgbLum(TEXT_DARK)) ? TEXT_LIGHT : TEXT_DARK;
 }
 
-/** 大数缩写：1234 → 1.23K（index.html:1555-1562） */
+/**
+ * 大数缩写：1234 → 1.23K（对齐 H5 index.html:1637-1656）
+ *   · NaN / Infinity 一律显示 '0'，杜绝 "NaN" / "InfinityQi"；
+ *   · 单位表在 Qi(1e18) 之上补 Si(1e21) / Sp(1e24) / Oc(1e27)；
+ *   · 「进位不换单位」修复：四舍五入后若已达 1000，继续升一档
+ *     （999500 必须显示 1.00M，而不是 1000K）。
+ */
+const FMT_UNITS = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Si', 'Sp', 'Oc'];
 export function fmt(n: number): string {
-  let v = Math.floor(n);
+  let v = Number(n);
+  if (!isFinite(v)) return '0';
+  v = Math.floor(v);
+  if (v < 0) v = 0;
   if (v < 1000) return String(v);
-  const units = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi'];
   let u = 0;
-  while (v >= 1000 && u < units.length - 1) { v = v / 1000; u++; }
-  const digits = v < 10 ? 2 : (v < 100 ? 1 : 0);
-  return v.toFixed(digits) + units[u];
+  while (v >= 1000 && u < FMT_UNITS.length - 1) { v = v / 1000; u++; }
+  let digits = v < 10 ? 2 : (v < 100 ? 1 : 0);
+  let rounded = Number(v.toFixed(digits));
+  while (rounded >= 1000 && u < FMT_UNITS.length - 1) {
+    v /= 1000; u++;
+    digits = v < 10 ? 2 : (v < 100 ? 1 : 0);
+    rounded = Number(v.toFixed(digits));
+  }
+  return rounded.toFixed(digits) + FMT_UNITS[u];
 }
 
 export const GameConfig = {

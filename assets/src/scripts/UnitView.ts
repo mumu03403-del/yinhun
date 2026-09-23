@@ -4,8 +4,9 @@
  *   tier 1-12  → 圆形徽章 + 金边圆环（有棋盘贴图时贴图被裁成圆；index.html:1816-1830）
  *   tier 13-24 → 六边形色块 + 金边（H5 里 board 为 null，本来就没有贴图）
  * 档位数字带深色底座，保证在图案上清晰可读。
- * 另负责满级单位的长按（500ms）变现手势、短按点选，以及**拖拽合并**的源格手势
- * （拖拽语义对齐 H5 index.html:1420-1455 的 pointermove / pointerup 分支）。
+ * 另负责「当前最高档位」单位的长按（500ms）变现手势、短按点选，以及**拖拽合并**的源格手势
+ * （拖拽语义对齐 H5 index.html:1420-1455 的 pointermove / pointerup 分支；
+ *  长按资格由 MergeGrid 通过 `onCanSettle` 注入，判据见 H5 index.html:1215-1217 / 2018-2021）。
  *
  * 节点结构（顺序即渲染顺序，Cocos 中节点自身的渲染先于其子节点，故必须分层）：
  *   cell(UnitView, UITransform)
@@ -55,8 +56,15 @@ export class UnitView extends Component {
 
   /** 短按（点选 / 合并）回调 */
   onTap: (() => void) | null = null;
-  /** 长按到达阈值（满级变现）回调 */
+  /** 长按到达阈值（变现）回调 */
   onSettle: (() => void) | null = null;
+  /**
+   * 长按资格判定，由 MergeGrid 注入（= `canSettle(idx)`）。
+   * 对齐 H5：`startPress` 里 `if (!canSettle(i)) return`（index.html:1215-1217）
+   * 与 `drawPressRing` 的 `pressTier !== state.highestTier`（index.html:2018-2021）。
+   * 未注入时退化为「仅最高档（24 档）」。
+   */
+  onCanSettle: (() => boolean) | null = null;
   /** 拖拽开始（手指按下并按住本格）回调 */
   onDragStart: (() => void) | null = null;
   /** 拖拽移动回调，参数：本次触摸的 UI 坐标 */
@@ -156,8 +164,11 @@ export class UnitView extends Component {
     // 拖拽源格（H5 pointerdown 里 pointer.cell = i）
     if (this.onDragStart) this.onDragStart();
 
-    // 只有满级单位支持长按变现
-    if (this.tier !== GameConfig.maxTier || !this.onSettle) return;
+    // 长按变现：判据是「当前最高档位」而非固定 24 档（H5 index.html:814-815 / 1217 / 2021）。
+    // 早先写成 `this.tier !== GameConfig.maxTier` 会让 settles 无法累积、所有门槛不可达。
+    if (!this.onSettle) return;
+    const ok = this.onCanSettle ? this.onCanSettle() : (this.tier === GameConfig.maxTier);
+    if (!ok) return;
 
     this.cancelLongPress();
     this.longPressFired = false;

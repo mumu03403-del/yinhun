@@ -35,6 +35,7 @@ import { GameConfig, hexToColor, fmt } from '../data/GameConfig';
 import { codexCardUnlocked, isGateTier, gateShort } from '../data/GateConfig';
 import { MergeGrid } from './MergeGrid';
 import { GameAudio } from './Audio';
+import { AdManager } from './AdManager';
 
 /** H5 逻辑舞台（index.html:142-143） */
 const DESIGN_W = 812;
@@ -110,6 +111,11 @@ export class Hud {
   onReset: (() => void) | null = null;
   /** 好友入口（Cocos 无 GinSocial，走 H5 的 else 分支 toast，index.html:1376） */
   onFriends: (() => void) | null = null;
+  /**
+   * 「看视频解锁」确认框点「看视频解锁」后触发（参数：kind = 'tier' | 'row'）。
+   * 由 GameManager 接到 AdManager 上（H5 adConfirmYes，index.html:2284-2292）。
+   */
+  onAdConfirm: ((kind: 'tier' | 'row', tier: number, row: number) => void) | null = null;
 
   /** 音频组件（由 GameManager 注入）；未注入时静音按钮退化为只切图标 */
   audio: GameAudio | null = null;
@@ -146,6 +152,16 @@ export class Hud {
   /** 重置确认弹窗 */
   private confirmRoot: Node | null = null;
 
+  /** 「看视频解锁」确认弹窗（H5 openAdModal / drawAdModal，index.html:2257-2282） */
+  private adConfirmRoot: Node | null = null;
+  private adTitle: Label | null = null;
+  private adDesc: Label | null = null;
+  private adRemain: Label | null = null;
+  /** 当前确认框的请求参数（点「看视频解锁」时回传给 GameManager） */
+  private adKind: 'tier' | 'row' = 'tier';
+  private adTier = 0;
+  private adRow = 0;
+
   // ---------- 构建 ----------
 
   /**
@@ -172,6 +188,7 @@ export class Hud {
     this.buildInfoBlocks(root);
     this.buildLegend(root);
     this.buildResetConfirm(root);
+    this.buildAdConfirm(root);
   }
 
   /** 绑定状态源（build 之后调用） */
@@ -507,7 +524,7 @@ export class Hud {
       const colorHex = GameConfig.tierColors[i];
       const c = hexToColor(colorHex);
 
-      // 色块圆点 14×14 r5 + 白色 18% 描边（index.html:2037-2038）
+      // 色块圆点 14×14 r5 + 白色 18% 描边（index.html:2356-2357）
       g.fillColor = new Color(c.r, c.g, c.b, 255);
       g.roundRect(this.sx(lx), this.sy(ry + 7), 14 * this.k, 14 * this.k, 5 * this.k);
       g.fill();
@@ -516,20 +533,20 @@ export class Hud {
       g.roundRect(this.sx(lx), this.sy(ry + 7), 14 * this.k, 14 * this.k, 5 * this.k);
       g.stroke();
 
-      // 解锁态用图鉴口径（index.html:2035 codexCardUnlocked）
+      // 解锁态用图鉴口径（index.html:2354 codexCardUnlocked；定义见 1185-1188）
       const unlocked = codexCardUnlocked(tierN, grid);
       const gated = isGateTier(tierN);
       const name = this.legendNames[i];
       const rate = this.legendRates[i];
       if (name) {
-        // index.html:2040-2044：门槛档位显示「锁 xxx」，其余显示「合出 N 档解锁」
+        // index.html:2359-2363：门槛档位显示「锁 xxx」，其余显示「合出 N 档解锁」
         const lockLabel = gated ? ('锁 ' + gateShort(tierN)) : ('合出 ' + tierN + ' 档解锁');
         name.string = tierN + '·' + (unlocked ? GameConfig.characterNames[i] : lockLabel);
         name.fontSize = Math.max(8, Math.round((gated ? 10 : 11) * this.k));
         name.color = unlocked ? col('#f0e2a8', 255) : col('#8a93ad', 255);
         name.isBold = unlocked;
       }
-      if (rate) rate.string = '+' + GameConfig.coinRate[i] + '/秒';   // index.html:2046
+      if (rate) rate.string = '+' + GameConfig.coinRate[i] + '/秒';   // index.html:2365
     }
   }
 
@@ -621,6 +638,104 @@ export class Hud {
     if (this.confirmRoot) this.confirmRoot.active = false;
   }
 
+  // ---------- 「看视频解锁」确认弹窗 ----------
+  //
+  // 逐项对齐 H5 的广告确认框（index.html:2246-2293）：
+  //   几何 = adModalRects()（bw = W-72、bh = 232、按钮条 y = by+bh-56，与离线/重置弹窗同框）
+  //   标题 = '看视频立即解锁 N 档？' / '看视频免费解锁第 N 行？'
+  //   正文 = openAdModal 里的 desc（门槛目标文案 / 金币价格与当前金币）
+  //   副文案 = '（今日剩余 X 次 / 每日 3 次）'
+  //   按钮 = ['看视频解锁' #2ecc71] ['放弃' #5c5c72]
+
+  private buildAdConfirm(root: Node) {
+    const cr = new Node('adConfirm');
+    cr.parent = root;
+    this.adConfirmRoot = cr;
+    const u = cr.addComponent(UITransform);
+    u.setContentSize(DESIGN_W * this.k, DESIGN_H * this.k);
+
+    // 遮罩 rgba(0,0,0,0.78)（index.html:2271-2272）
+    const g = cr.addComponent(Graphics);
+    g.fillColor = new Color(0, 0, 0, 199);
+    g.roundRect(-DESIGN_W * this.k / 2, -DESIGN_H * this.k / 2, DESIGN_W * this.k, DESIGN_H * this.k, 0);
+    g.fill();
+
+    const frame = new Node('adConfirmFrame');
+    frame.parent = cr;
+    frame.setPosition(this.sx(MODAL_RECT.x + MODAL_RECT.w / 2), this.sy(MODAL_RECT.y + MODAL_RECT.h / 2), 0);
+    const fu = frame.addComponent(UITransform);
+    fu.setContentSize(MODAL_RECT.w * this.k, MODAL_RECT.h * this.k);
+    const fg = frame.addComponent(Graphics);
+    const fw = MODAL_RECT.w * this.k;
+    const fh = MODAL_RECT.h * this.k;
+    fg.fillColor = col('#1c1c2a', 255);
+    fg.roundRect(-fw / 2, -fh / 2, fw, fh, 14 * this.k);
+    fg.fill();
+    fg.fillColor = col('#1e180c', 255);
+    fg.rect(-fw / 2 + 2 * this.k, fh / 2 - 44 * this.k, fw - 4 * this.k, 44 * this.k);
+    fg.fill();
+    fg.fillColor = col('#e8c15a', 255);
+    fg.rect(-fw / 2 + 2 * this.k, fh / 2 - 46 * this.k, fw - 4 * this.k, 2 * this.k);
+    fg.fill();
+    fg.lineWidth = 2 * this.k;
+    fg.strokeColor = col('#e8c15a', 255);
+    fg.roundRect(-fw / 2, -fh / 2, fw, fh, 14 * this.k);
+    fg.stroke();
+
+    // 标题（文案由 showAdConfirm 按 kind 动态设置，index.html:2273-2276）
+    this.adTitle = this.makeText(cr, DESIGN_W / 2, MODAL_RECT.y + 29, 19, '#e8c15a', 'center', true);
+    // 正文 desc（index.html:2277 的 box.y + 78）
+    this.adDesc = this.makeText(cr, DESIGN_W / 2, MODAL_RECT.y + 78, 13, '#e7ecf5', 'center', true);
+    // 今日剩余次数（index.html:2278-2279 的 box.y + 108）
+    this.adRemain = this.makeText(cr, DESIGN_W / 2, MODAL_RECT.y + 108, 12, '#9a9ab0', 'center', false);
+
+    // 两个按钮平分按钮条（index.html:2248-2253 的 yes / no）
+    const bandY = MODAL_RECT.y + MODAL_RECT.h - MODAL_BTN_Y_OFFSET;
+    const btnW = (MODAL_RECT.w - 48 - 12) / 2;
+    const yes = this.makeButton(cr, { x: MODAL_RECT.x + 24, y: bandY, w: btnW, h: 44 }, '看视频解锁', '#2ecc71', false);
+    yes.node.on(NodeEventType.TOUCH_END, () => {
+      const k = this.adKind;
+      const t = this.adTier;
+      const r = this.adRow;
+      this.hideAdConfirm();
+      if (this.onAdConfirm) this.onAdConfirm(k, t, r);
+    });
+    const no = this.makeButton(cr, { x: MODAL_RECT.x + 24 + btnW + 12, y: bandY, w: btnW, h: 44 }, '放弃', '#5c5c72', false);
+    no.node.on(NodeEventType.TOUCH_END, () => this.hideAdConfirm());
+
+    // 点空白 = 放弃
+    cr.on(NodeEventType.TOUCH_START, () => { /* 吞掉触摸 */ });
+    cr.on(NodeEventType.TOUCH_END, () => this.hideAdConfirm());
+
+    cr.active = false;
+  }
+
+  /**
+   * 弹出「看视频解锁」确认框。
+   * @param kind 'tier' = 档位门槛被拦；'row' = 解锁行金币不足
+   * @param desc 正文（H5 openAdModal 里算好的 desc，index.html:2257-2267）
+   */
+  showAdConfirm(kind: 'tier' | 'row', tier: number, row: number, desc: string) {
+    this.adKind = kind;
+    this.adTier = tier;
+    this.adRow = row;
+    if (this.adTitle) {
+      this.adTitle.string = kind === 'tier'
+        ? ('看视频立即解锁 ' + tier + ' 档？')
+        : ('看视频免费解锁第 ' + row + ' 行？');
+    }
+    if (this.adDesc) this.adDesc.string = desc || '';
+    if (this.adRemain) {
+      this.adRemain.string = '（今日剩余 ' + AdManager.get().remainingToday()
+        + ' 次 / 每日 ' + AdManager.get().dailyLimit() + ' 次）';
+    }
+    if (this.adConfirmRoot) this.adConfirmRoot.active = true;
+  }
+
+  private hideAdConfirm() {
+    if (this.adConfirmRoot) this.adConfirmRoot.active = false;
+  }
+
   // ---------- 刷新 ----------
 
   /** 每秒由 GameManager 调用，刷新全部动态文案（对应 H5 每帧重绘 render()） */
@@ -651,11 +766,14 @@ export class Hud {
       this.tipLabel.string = '点此选择档位招募（一级 ' + fmt(grid.recruitCost(1)) + ' 金币起）';
     }
 
-    // 统计行（index.html:2098-2101）
+    // 统计行（index.html:2413-2421）
+    // 图鉴计数必须与图鉴页同口径（H5 `unlockedCardCount()`，index.html:2423-2428）：
+    // 按「该档是否解锁」计数，而不是简单的 `highestTier >= i` —— 否则门槛未过的档位
+    // 在 HUD 里会算作已解锁，与图鉴页对不上。
     if (this.statsLabel) {
       let unlocked = 0;
-      for (let i = 0; i < GameConfig.maxTier; i++) {
-        if (grid.highestTier >= i + 1) unlocked++;
+      for (let t = 1; t <= GameConfig.maxTier; t++) {
+        if (codexCardUnlocked(t, grid)) unlocked++;
       }
       let line = '已合成 ' + grid.merges + ' 次 · 最高档位 ' + grid.highestTier
         + ' · 图鉴 ' + unlocked + '/' + GameConfig.maxTier;

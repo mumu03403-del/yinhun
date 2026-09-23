@@ -1,10 +1,10 @@
 /**
- * 本地存档读写：移植 H5 v2.8.0 的 build/publish/index.html:549-620，
+ * 本地存档读写：移植 H5 的 build/publish/index.html:555-632，
  * 存储介质换成 cc.sys.localStorage（微信小游戏 / 浏览器均可用）。
  *
  * 存档结构与 H5 完全对齐，便于后续与 H5 版本互相迁移：
  *   { v, cells, coins, highestTier, merges, spawns, settles,
- *     unlockedRows, fragments, codexDone, recruitCounts, time }
+ *     unlockedRows, fragments, codexDone, recruitCounts, adUnlockedTiers, time }
  */
 import { sys } from 'cc';
 import { GameConfig } from './GameConfig';
@@ -26,6 +26,11 @@ export interface SaveState {
   codexDone: boolean[];
   /** 各档已招募次数，索引 = 档位（长度 maxTier+1） */
   recruitCounts: number[];
+  /**
+   * 看激励视频广告解锁的档位（key = 档位数字，值恒为 true）。
+   * 对齐 H5 `state.adUnlockedTiers`（index.html:510 / 573）。
+   */
+  adUnlockedTiers: { [tier: number]: boolean };
 }
 
 /** 落盘的完整结构 */
@@ -76,6 +81,8 @@ export function save(state: SaveState): boolean {
       fragments: state.fragments.slice(),
       codexDone: state.codexDone.slice(),
       recruitCounts: state.recruitCounts.slice(),
+      // H5 直接写 state.adUnlockedTiers（index.html:573）；这里拷一份，避免存档对象与运行时状态共享引用
+      adUnlockedTiers: { ...state.adUnlockedTiers },
       time: Date.now(),
     };
     sys.localStorage.setItem(GameConfig.saveKey, JSON.stringify(data));
@@ -142,6 +149,16 @@ export function load(): SaveData | null {
     }
   }
 
+  // adUnlockedTiers：只吸收合法键（整数 1..maxTier 且为真值），杜绝脏数据污染门槛判定
+  // （H5 index.html:617-625 的同款过滤）
+  const adUnlockedTiers: { [tier: number]: boolean } = {};
+  if (d.adUnlockedTiers && typeof d.adUnlockedTiers === 'object') {
+    for (const k of Object.keys(d.adUnlockedTiers)) {
+      const adt = Math.floor(Number(k));
+      if (adt >= 1 && adt <= maxTier && d.adUnlockedTiers[k]) adUnlockedTiers[adt] = true;
+    }
+  }
+
   return {
     v: num(d.v, SAVE_VERSION),
     cells,
@@ -154,6 +171,7 @@ export function load(): SaveData | null {
     fragments,
     codexDone,
     recruitCounts,
+    adUnlockedTiers,
     time: num(d.time, Date.now()),
   };
 }

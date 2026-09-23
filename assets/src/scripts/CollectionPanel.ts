@@ -1,18 +1,22 @@
 /**
  * 图鉴面板：展示 24 档角色卡，含碎片进度、每秒产出与门槛目标文案。
- * 卡片左上角为「醒目档位角标」——金边圆点 + 档位数字（对齐 H5 index.html:2235-2244）。
- * 已解锁卡片的底图为该档图鉴原图，按 cover 裁剪铺满卡面（等价 H5 drawCover，
- * index.html:2182-2189 / 2223）；资源缺失时回落纯色底板，绝不出现空白卡片。
+ * 卡片左上角为「醒目档位角标」——金边圆点 + 档位数字（对齐 H5 index.html:2229-2255）。
+ * 已解锁卡片的底图为该档图鉴原图，按「面部优先」裁剪铺满卡面
+ * （等价 H5 `drawCoverTop()`，index.html:2507-2516 / 2551）；资源缺失时回落纯色底板，
+ * 绝不出现空白卡片。
  * 全屏半透明遮罩 + 卡片网格。
  * 节点分层：card（底板 Graphics）→ art（Sprite 贴图）→ fg（描边/压暗/角标 Graphics）→ 文字。
  * Cocos 里节点自身渲染先于子节点，故三者必须拆成三层，否则贴图会盖住描边与角标。
  *
- * 说明：H5 的图鉴卡是 2 列 × 12 行可滚动（竖屏/横屏不同），
- * 这里按需求改为 3 列 × 8 行并在可用高度内动态收缩卡片，
- * 以便在竖屏下一次性完整展示 24 档（横屏版式待编辑器批次处理）。
+ * 版式：**2 列 × 12 行可滚动**，逐项对齐 H5 `drawCollection()`（index.html:2518-2530）：
+ *   cardW = (W-32-12)/2、cardH = 132、gap = 12、列表起点 y = 70、裁剪区高 = H-175、
+ *   maxScroll = (24/2)*(cardH+gap) - (H-175)。
+ * Cocos 用 Mask(GRAPHICS_RECT) 做视口裁剪 + 手指拖拽平移内容（H5 是 canvas 坐标 +
+ * collectionScrollY）。卡片高度从早先「按可用高度压缩到 70px」提高到 132px，
+ * 配合面部优先裁切，头部才不会被切掉。
  */
 import {
-  Node, UITransform, Label, Sprite, Graphics, Color, NodeEventType,
+  Node, UITransform, Label, Sprite, Graphics, Color, NodeEventType, Mask, EventTouch,
   HorizontalTextAlignment, VerticalTextAlignment,
 } from 'cc';
 import { GameConfig, hexToColor } from '../data/GameConfig';
@@ -51,6 +55,16 @@ export class CollectionPanel {
   private grid: MergeGrid | null = null;
   onClose: (() => void) | null = null;
 
+  /** 视口内承载卡片的滚动容器（y 平移 = 滚动量） */
+  private scrollContent: Node | null = null;
+  /** 当前滚动量（像素，0 = 顶端）；对应 H5 的 collectionScrollY（index.html:536） */
+  private scrollY = 0;
+  /** 滚动上限；对应 H5 的 collectionMaxScroll（index.html:537 / 2530） */
+  private maxScroll = 0;
+  /** 本次拖拽起点与起点滚动量 */
+  private dragStartY = 0;
+  private dragStartScroll = 0;
+
   /** 绑定棋盘状态源（必须在 build 之后调用） */
   bind(grid: MergeGrid) {
     this.grid = grid;
@@ -84,23 +98,48 @@ export class CollectionPanel {
     tl.horizontalAlign = HorizontalTextAlignment.CENTER;
     tl.verticalAlign = VerticalTextAlignment.CENTER;
 
-    // 卡片网格：3 列 × 8 行 = 24 档，按可用高度动态收缩
-    const cols = 3;
-    const rows = Math.ceil(GameConfig.maxTier / cols);
-    const marginX = 20;
-    const topReserve = 92;
-    const bottomReserve = 66;
-    const gap = 14;
+    // 卡片列表：2 列 × 12 行可滚动，逐项对齐 H5 drawCollection（index.html:2525-2535）
+    const cols = 2;
+    const rows = Math.ceil(GameConfig.maxTier / cols);          // 12
+    const cardW = Math.floor((width - 32 - 12) / cols);         // H5: (W-32-12)/2（2526）
+    const cardH = 132;                                          // H5: 96 → 132（2527）
+    const gap = 12;                                             // H5（2528）
+    const listTop = 70;                                         // H5 startY = 70（2529）
+    const viewH = Math.max(1, height - 175);                    // H5 裁剪区高 = H-175（2534）
 
-    const cardW = Math.floor((width - marginX * 2 - (cols - 1) * gap) / cols);
-    const availH = height - topReserve - bottomReserve - (rows - 1) * gap;
-    let cardH = Math.floor(availH / rows);
-    if (cardH > 150) cardH = 150;
-    if (cardH < 70) cardH = 70;
+    // 视口：Mask(GRAPHICS_RECT) 按 contentSize 生成裁剪矩形（engine mask.ts:411-437）
+    const viewport = new Node('collectionViewport');
+    viewport.parent = root;
+    const vu = viewport.addComponent(UITransform);
+    vu.setContentSize(width, viewH);
+    // H5 裁剪区 = x∈[0,W]、y∈[listTop, listTop+viewH]（左上原点）→ Cocos 中心原点
+    viewport.setPosition(0, height / 2 - listTop - viewH / 2, 0);
+    const mask = viewport.addComponent(Mask);
+    mask.type = Mask.Type.GRAPHICS_RECT;
 
-    const totalW = cols * cardW + (cols - 1) * gap;
-    const startX = -totalW / 2 + cardW / 2;
-    const startY = height / 2 - topReserve - cardH / 2;
+    const scroll = new Node('collectionScroll');
+    scroll.parent = viewport;
+    const su = scroll.addComponent(UITransform);
+    su.setContentSize(width, viewH);
+    this.scrollContent = scroll;
+
+    // 滚动上限（H5 index.html:2530）：内容总高 - 视口高
+    this.maxScroll = Math.max(0, rows * (cardH + gap) - viewH);
+    this.scrollY = 0;
+    this.setScroll(0);
+
+    // 手指拖拽滚动（H5 是 collectionScrollY 直接累加；这里按「上滑看下一条」处理）
+    viewport.on(NodeEventType.TOUCH_START, (ev: EventTouch) => {
+      this.dragStartY = ev.getUILocation().y;
+      this.dragStartScroll = this.scrollY;
+    });
+    viewport.on(NodeEventType.TOUCH_MOVE, (ev: EventTouch) => {
+      // 手指上移（Cocos y 增大）→ 内容上移 → 滚动量增大
+      this.setScroll(this.dragStartScroll + (ev.getUILocation().y - this.dragStartY));
+    });
+    // 吞掉起手，避免点击穿透到下层；抬手保留当前位置（不做惯性）
+    viewport.on(NodeEventType.TOUCH_END, () => { /* 保留位置 */ });
+    viewport.on(NodeEventType.TOUCH_CANCEL, () => { /* 保留位置 */ });
 
     for (let i = 0; i < GameConfig.maxTier; i++) {
       const r = Math.floor(i / cols);
@@ -108,10 +147,12 @@ export class CollectionPanel {
       const tierN = i + 1;
 
       const card = new Node('card_' + tierN);
-      card.parent = root;
+      card.parent = scroll;
+      // H5：x = 16 + c*(cardW+gap)，y(顶) = listTop + r*(cardH+gap) - collectionScrollY；
+      // 换算到「视口中心为原点、y 向上」的局部坐标（滚动量由 scroll 节点的 y 承担）
       card.setPosition(
-        startX + c * (cardW + gap),
-        startY - r * (cardH + gap),
+        16 + c * (cardW + gap) + cardW / 2 - width / 2,
+        viewH / 2 - r * (cardH + gap) - cardH / 2,
         0,
       );
       const cu = card.addComponent(UITransform);
@@ -119,7 +160,7 @@ export class CollectionPanel {
       // ① 底板填充（卡片节点自身，渲染先于所有子节点）
       const cg = card.addComponent(Graphics);
 
-      // ② 图鉴原图（cover 裁剪，等价 H5 drawCover，index.html:2182-2189 / 2223）
+      // ② 图鉴原图（面部优先裁剪，等价 H5 drawCoverTop，index.html:2507-2516 / 2551）
       const artNode = new Node('art');
       artNode.parent = card;
       const au = artNode.addComponent(UITransform);
@@ -232,7 +273,9 @@ export class CollectionPanel {
     const tiu = tip.addComponent(UITransform);
     tiu.setContentSize(width - 40, 24);
     const til = tip.addComponent(Label);
-    til.string = '点击右上角 X 关闭 · 碎片满 10 即点亮图鉴';
+    til.string = this.maxScroll > 0
+      ? '上下滑动查看更多 · 碎片满 10 即点亮图鉴 · 右上角 X 关闭'
+      : '碎片满 10 即点亮图鉴 · 点击右上角 X 关闭';
     til.fontSize = 12;
     til.color = new Color(150, 155, 175, 255);
     til.horizontalAlign = HorizontalTextAlignment.CENTER;
@@ -303,10 +346,10 @@ export class CollectionPanel {
       card.base.roundRect(x0, y0, card.cardW, card.cardH, 16);
       card.base.fill();
 
-      // 图鉴原图：cover 裁剪（等价 H5 drawCover(index.html:2182-2189) + index.html:2223）
+      // 图鉴原图：**面部优先**裁剪（等价 H5 drawCoverTop，index.html:2507-2516 / 2551）
       // 未解锁 / 资源缺失 → null，退回纯色底板，绝不出现空白卡片
       card.art.spriteFrame = unlocked
-        ? AssetHub.get().getCodexCover(tierN, card.cardW, card.cardH)
+        ? AssetHub.get().getCodexCoverTop(tierN, card.cardW, card.cardH)
         : null;
 
       // 描边 + 压暗层 + 角标（画在贴图之上）
@@ -385,6 +428,20 @@ export class CollectionPanel {
           card.goal.color = new Color(92, 92, 114, 255);   // #5c5c72
         }
       }
+    }
+  }
+
+  /**
+   * 设置滚动量并平移内容。H5 直接写 `collectionScrollY`（index.html:2528 附近的使用处），
+   * 这里补上钳位与 NaN 兜底（防止拖拽数据异常时整列表飞出屏幕）。
+   */
+  private setScroll(v: number) {
+    const max = this.maxScroll > 0 ? this.maxScroll : 0;
+    if (!isFinite(v) || !(max > 0)) this.scrollY = 0;
+    else this.scrollY = Math.max(0, Math.min(max, v));
+    if (this.scrollContent && this.scrollContent.isValid) {
+      // 滚动量增大 → 内容上移（列表向下翻）
+      this.scrollContent.setPosition(0, this.scrollY, 0);
     }
   }
 

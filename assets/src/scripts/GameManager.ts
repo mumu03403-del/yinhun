@@ -16,12 +16,14 @@
  *   离线收益弹窗/提示        ← index.html:607-615（H5 是 modal，这里是 toast）
  *   重置存档                ← index.html:1384-1388 → resetAll() index.html:619-623
  *   好友入口                ← index.html:1372-1378（无 GinSocial 时的 else 分支）
+ *   激励视频解锁（档位/行）  ← index.html:2122-2307（AdManager + Hud 确认框 + 本文件接线）
  */
 import {
   _decorator, Component, Node, UITransform, Graphics, Color, Label,
   HorizontalTextAlignment, VerticalTextAlignment, view,
 } from 'cc';
 import { GameConfig, hexToColor, fmt } from '../data/GameConfig';
+import { gateGoalText } from '../data/GateConfig';
 import * as SaveStore from '../data/SaveStore';
 import { MergeGrid } from './MergeGrid';
 import { Hud } from './Hud';
@@ -29,6 +31,7 @@ import { CollectionPanel } from './CollectionPanel';
 import { RecruitPanel } from './RecruitPanel';
 import { GameAudio } from './Audio';
 import { AssetHub } from './AssetHub';
+import { AdManager } from './AdManager';
 
 const { ccclass } = _decorator;
 
@@ -122,6 +125,25 @@ export class GameManager extends Component {
     this.hud.onReset = () => this.onResetConfirmed();
     this.hud.onFriends = () => this.onFriendsPressed();
     this.hud.bind(this.grid);
+
+    // ---------- 激励视频广告接线（H5 index.html:2122-2307）----------
+    // ① 提示文案走 GameManager 的 toast（H5 里广告模块直接写全局 toast）
+    AdManager.get().onMessage = (text, seconds) => this.showToast(text, seconds);
+    // ② 确认框点「看视频解锁」→ 播广告 → 成功（含兜底放行）后再兑现
+    this.hud.onAdConfirm = (kind, tier, row) => this.onAdConfirm(kind, tier, row);
+    // ③ 两条接入链路：
+    //    a. 档位门槛被拦（H5 doMerge → openAdModal('tier', …)，index.html:767-770）
+    this.grid.onGateBlocked = (tier) => {
+      this.hud.showAdConfirm('tier', tier, 0, gateGoalText(tier));
+    };
+    //    b. 解锁新行金币不足（H5 tryUnlockRow → openAdModal('row', …)，index.html:2112-2116）
+    this.grid.onRowUnlockBlocked = (row) => {
+      const price = GameConfig.rowUnlockPrices[row];
+      this.hud.showAdConfirm(
+        'row', 0, row,
+        '需 ' + fmt(price || 0) + ' 金币（当前 ' + fmt(this.grid.coins) + '）',
+      );
+    };
 
     // 图鉴面板（全屏）
     this.collection = new CollectionPanel();
@@ -330,6 +352,28 @@ export class GameManager extends Component {
     this.buildBoard(this.viewW(), this.viewH());
     this.hud.refresh();
     this.saveNow();
+  }
+
+  /**
+   * 确认框点「看视频解锁」→ 播激励视频；成功（含兜底放行）后按 kind 兑现。
+   * 对齐 H5 `adConfirmYes`（index.html:2284-2292）→ `adApplyTierUnlock` / `adApplyRowUnlock`
+   * （index.html:2165-2177）。`adUnlockedTiers` 由 `saveNow()` 随存档落盘。
+   */
+  private onAdConfirm(kind: 'tier' | 'row', tier: number, row: number) {
+    AdManager.get().show(() => {
+      if (kind === 'tier') {
+        if (this.grid.adApplyTierUnlock(tier)) {
+          // 门槛放行后图鉴卡片立即可见（codexCardUnlocked → tierGateOk 白名单）
+          this.collection.unlockTier(tier);
+          this.hud.refresh();
+        }
+      } else {
+        // 看视频免费解锁：跳过扣费，走与付费路径共用的 unlockRowNow()
+        // （后者会触发 onRowUnlocked → 重排棋盘 + 刷新 + 落盘）
+        this.grid.unlockRowNow();
+      }
+      this.saveNow();
+    });
   }
 
   /** 立即落盘并重置节流计时 */

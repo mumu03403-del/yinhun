@@ -244,10 +244,15 @@ export class AssetHub {
   }
 
   /**
-   * 图鉴卡的「cover 裁剪」版本：等价 H5 index.html:2182-2189 的 `drawCover()`。
+   * 图鉴卡的「cover 裁剪」版本：等价 H5 `drawCover()`（index.html:2499-2505）：按目标宽高比
+   * 居中裁一块源图区域，再拉伸铺满目标矩形（不变形、会裁边）。
    *
-   * H5 逻辑：按目标宽高比居中裁一块源图区域，再拉伸铺满目标矩形（不变形、会裁边）。
-   * Cocos 做法：clone 一份 SpriteFrame 并把 `rect` 改成裁后的子矩形
+   * ⚠️ 图鉴**列表卡**已改用下面的 `getCodexCoverTop()`（面部优先，否则脸会被切掉）。
+   *    本方法保留是为了与 H5 双轨对齐 —— H5 里 `drawCover` 仍在用：
+   *    图鉴达成庆祝弹窗的圆形头像（index.html:2329，1:1 目标 + 1:1 源图 → 实际不裁）。
+   *    Cocos 侧暂未移植该庆祝弹窗（GameManager.onCodexDone 只给 toast），故当前无调用方。
+   *
+   * 实现方式：clone 一份 SpriteFrame 并把 `rect` 改成裁后的子矩形
    *   —— 与原图共用同一个 Texture2D，零额外 draw call，也不需要 Mask 组件。
    * 调用方需把节点的 `SizeMode` 设为 CUSTOM 并把 contentSize 设为目标尺寸。
    *
@@ -288,6 +293,63 @@ export class AssetHub {
 
       const out = src.clone();
       out.setRect(new Rect(cx, cy, cw, ch));
+      this.coverCache[key] = out;
+      return out;
+    } catch (e) {
+      return src;   // 裁剪失败时退回原图，至少不是空白
+    }
+  }
+
+  /**
+   * 图鉴卡的「面部/头部优先」裁剪版本：等价 H5 `drawCoverTop()`（index.html:2507-2516）。
+   *
+   * 与 `getCodexCover` 的唯一差别：**源图更高（竖构图）时不再居中裁，而是对齐到图幅顶端**
+   * （只保留上部），保证 1024×1024 的全身立绘在扁卡片里**头部完整、五官可辨**。
+   * 原先的居中裁切对 384×132 的卡片只能保留纵向 ~34%，整颗头正好被切掉 —— 图鉴卡
+   * 「看不到脸」的根因（H5 index.html:2508-2509 的注释记录了同一个问题）。
+   *
+   * ⚠️ 坐标系依据：Cocos `SpriteFrame.rect` 以**纹理左上角**为原点、y 向下。
+   *    证据 = engine/cocos/2d/assets/sprite-frame.ts:_calculateUV()/_calculateSlicedUV()
+   *    把 `t = rect.y / texh` 映射到 quad 顶部、`b = (rect.y+rect.height)/texh` 映射到底部，
+   *    而 gfx/webgl-swapchain.ts:45 设 `UNPACK_FLIP_Y_WEBGL = false`（v=0 即图像首行=图片顶部），
+   *    故最小 y = 图片顶端——与 H5 canvas（左上原点、y 向下）一致，
+   *    因此 H5 的 `sy = 0` 可直接映射为 `cy = rect.y`。
+   *
+   * @param tier 档位（1-24）
+   * @param targetW 目标宽（像素）
+   * @param targetH 目标高（像素）
+   */
+  getCodexCoverTop(tier: number, targetW: number, targetH: number): SpriteFrame | null {
+    const src = this.getCodex(tier);
+    if (!src) return null;
+    if (!(targetW > 0) || !(targetH > 0)) return src;
+
+    const key = 'top@' + tier + '@' + targetW + 'x' + targetH;
+    const cached = this.coverCache[key];
+    if (cached && cached.isValid) return cached;
+
+    try {
+      const r = src.rect;
+      const sw = r.width;
+      const sh = r.height;
+      if (!(sw > 0) || !(sh > 0)) return src;
+
+      const ir = sw / sh;              // 源图宽高比
+      const dr = targetW / targetH;    // 目标宽高比
+      let cx = r.x;
+      let cw = sw;
+      let ch = sh;
+      if (ir > dr) {
+        // 源图更宽 → 裁左右（居中），纵向不裁
+        cw = sh * dr;
+        cx = r.x + (sw - cw) / 2;
+      } else {
+        // 源图更高（竖构图）→ 只裁掉下方多余部分，顶端对齐（H5 的 sy = 0）
+        ch = sw / dr;
+      }
+
+      const out = src.clone();
+      out.setRect(new Rect(cx, r.y, cw, ch));
       this.coverCache[key] = out;
       return out;
     } catch (e) {

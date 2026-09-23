@@ -1,9 +1,12 @@
 /**
  * 合并网格：管理格子数据模型与视图，处理「点选两个同档单位合并升档」，
- * 并承载高级招募 / 行解锁 / 满级变现 / 自动放置 / 碎片图鉴等规则。
+ * 并承载高级招募 / 行解锁 / 变现 / 自动放置 / 碎片图鉴等规则。
  * 纯代码构建，无素材依赖。
  *
- * 数值与规则全部对齐 H5 v2.8.0（build/publish/index.html）。
+ * 数值与规则全部对齐 H5（build/publish/index.html，含 5883fa6 那批改动）：
+ *   · 变现判据 = 「当前最高档位」（index.html:814-836），不再是固定 24 档；
+ *   · 门槛被拦 → 走 onGateBlocked 弹「看视频立即解锁」（index.html:767-770）；
+ *   · 行解锁金币不足 → 走 onRowUnlockBlocked 弹「看视频免费解锁」（index.html:2112-2116）。
  */
 import { Node, UITransform, Graphics, Color, Vec3 } from 'cc';
 import { GameConfig, hexToColor, fmt } from '../data/GameConfig';
@@ -41,6 +44,11 @@ export class MergeGrid {
   merges = 0;
   spawns = 0;
   settles = 0;
+  /**
+   * 看激励视频广告解锁的档位（key = 档位数字）。
+   * 对齐 H5 `state.adUnlockedTiers`（index.html:510）；参与 `GateConfig.tierGateOk` 判定。
+   */
+  adUnlockedTiers: { [tier: number]: boolean } = {};
 
   /** 当前选中的格子索引，-1 表示未选中 */
   private selected = -1;
@@ -65,6 +73,17 @@ export class MergeGrid {
   onSettle: ((tier: number) => void) | null = null;
   /** 提示气泡回调，参数：文本、持续秒数 */
   onToast: ((text: string, seconds: number) => void) | null = null;
+  /**
+   * 档位门槛未过时的回调（参数：被拦下的目标档位）。
+   * H5 在 doMerge 里直接 `openAdModal('tier', targetTier, 0)`（index.html:767-770）；
+   * Cocos 侧把「弹确认框」交给 GameManager/HUD，故用回调解耦。
+   */
+  onGateBlocked: ((tier: number) => void) | null = null;
+  /**
+   * 解锁新行但金币不足时的回调（参数：待解锁的行数，1 基）。
+   * H5 `tryUnlockRow` 在此弹「看视频免费解锁第 N 行？」（index.html:2112-2116）。
+   */
+  onRowUnlockBlocked: ((row: number) => void) | null = null;
 
   constructor() {
     this.resetState();
@@ -91,6 +110,7 @@ export class MergeGrid {
     this.merges = 0;
     this.spawns = 0;
     this.settles = 0;
+    this.adUnlockedTiers = {};
     this.selected = -1;
   }
 
@@ -159,6 +179,9 @@ export class MergeGrid {
         uv.init(0, cellSize);
         uv.onTap = () => this.onCellTap(idx);
         uv.onSettle = () => this.doSettle(idx);
+        // 长按资格：H5 startPress 里 `if (!canSettle(i)) return`（index.html:1217）+
+        // drawPressRing 的 `pressTier !== state.highestTier`（index.html:2021）
+        uv.onCanSettle = () => this.canSettle(idx);
         // 拖拽合并（H5 index.html:1428 / 1447-1455）
         uv.onDragStart = () => this.onDragStart(idx);
         uv.onDragMove = (x, y) => this.onDragMove(x, y);
@@ -343,14 +366,14 @@ export class MergeGrid {
 
   // ---------- 放置与合并 ----------
 
-  /** 在已解锁区域随机空格放置一个 1 档单位，满格返回 false（index.html:638-655） */
+  /** 在已解锁区域随机空格放置一个 1 档单位，满格返回 false（index.html:658-675） */
   spawnTier1(): boolean {
     const idx = this.randomEmptyCell();
     if (idx < 0) {
-      // H5 会区分「场上有满级单位」给不同的提示（index.html:643-646）
+      // H5 会区分「场上有可变现单位」给不同的提示（index.html:661-668）
       this.toast(
-        this.hasMaxTierUnit()
-          ? '格子已满：长按满级单位变现可腾出空位'
+        this.hasSettleableUnit()
+          ? '格子已满：长按最高档单位变现可腾出空位'
           : '格子已满，先合并腾出空位',
         2.0,
       );
@@ -361,11 +384,15 @@ export class MergeGrid {
     return true;
   }
 
-  /** 已解锁区域内是否存在满级单位（index.html:1926-1929） */
-  hasMaxTierUnit(): boolean {
+  /**
+   * 已解锁区域内是否存在「可长按变现」的单位。
+   * 长按变现的判据是「当前最高档位」而非固定 24 档，故 H5 用的是
+   * `hasSettleableUnit`（index.html:2046-2052）而不是「有没有满级单位」。
+   */
+  hasSettleableUnit(): boolean {
     const n = this.activeCells();
     for (let i = 0; i < n; i++) {
-      if (this.cells[i] === GameConfig.maxTier) return true;
+      if (this.cells[i] > 0 && this.cells[i] === this.highestTier) return true;
     }
     return false;
   }
@@ -416,7 +443,9 @@ export class MergeGrid {
 
     const targetTier = tt + 1;
     if (!tierGateOk(targetTier, this)) {
-      this.toast(gateGoalText(targetTier, this), 2.4);
+      // 门槛未达 → 弹「看视频立即解锁」（H5 index.html:767-770；原来的 toast 会被全屏层盖死）
+      if (this.onGateBlocked) this.onGateBlocked(targetTier);
+      else this.toast(gateGoalText(targetTier, this), 2.4);
       return false;
     }
 
@@ -439,9 +468,15 @@ export class MergeGrid {
 
   // ---------- 高级招募 ----------
 
-  /** 高级招募定价（index.html:657-662）：基础 1000×5^(t-1)，同档每次翻倍、封顶 5 倍 */
+  /**
+   * 高级招募定价（index.html:677-685）：基础 1000×5^(t-1)，同档每次翻倍、封顶 5 倍。
+   * tier>=23 用**字面量常量**，避开 `Math.pow(5, 22/23)` 的双精度误差（H5 同款处理）。
+   */
   recruitCost(tier: number): number {
-    const base = 1000 * Math.pow(5, tier - 1);
+    let base: number;
+    if (tier >= 24) base = 11920928955078125000;        // = 1000 * 5^23 的字面量（index.html:680）
+    else if (tier >= 23) base = 2384185791015625000;    // = 1000 * 5^22 的字面量（index.html:681）
+    else base = 1000 * Math.pow(5, tier - 1);
     const mult = Math.min(Math.pow(2, this.recruitCounts[tier] || 0), 5);
     return Math.round(base * mult);
   }
@@ -479,36 +514,73 @@ export class MergeGrid {
 
   // ---------- 行解锁 ----------
 
-  /** 解锁下一行（index.html:1970-1988）；金币不足或已满行返回 false */
+  /**
+   * 实际解锁一行（**不含扣费**）——付费路径与「看视频免费解锁」路径共用，避免逻辑分叉。
+   * 等价 H5 `unlockRowNow()`（index.html:2095-2106）。
+   * @returns 已满行时返回 false
+   */
+  unlockRowNow(): boolean {
+    if (this.unlockedRows >= this.maxRows) return false;
+    this.unlockedRows++;
+    this.toast('已解锁第 ' + this.unlockedRows + ' 行！', 2.0);   // H5 index.html:2104
+    if (this.onRowUnlocked) this.onRowUnlocked();
+    return true;
+  }
+
+  /**
+   * 解锁下一行（index.html:2108-2120）；已满行 / 无价格返回 false。
+   * 金币不足时不再只弹 toast，而是回调上层弹「看视频免费解锁第 N 行？」（H5 index.html:2112-2116）。
+   */
   tryUnlockRow(): boolean {
     if (this.unlockedRows >= this.maxRows) return false;
     const price = GameConfig.rowUnlockPrices[this.unlockedRows + 1];
     if (price == null) return false;
 
     if (this.coins < price) {
-      this.toast('金币不足，解锁第' + (this.unlockedRows + 1) + '行需 ' + fmt(price) + ' 金币', 2.0);
+      const nextRow = this.unlockedRows + 1;
+      if (this.onRowUnlockBlocked) this.onRowUnlockBlocked(nextRow);
+      else this.toast('金币不足，解锁第' + nextRow + '行需 ' + fmt(price) + ' 金币', 2.0);
       return false;
     }
 
     this.coins -= price;
-    this.unlockedRows++;
-    if (this.onRowUnlocked) this.onRowUnlocked();
+    return this.unlockRowNow();
+  }
+
+  /**
+   * 看激励视频后解锁某档位的门槛（H5 `adApplyTierUnlock`，index.html:2165-2171）。
+   * 只置标记 + 提示；落盘与面板刷新由调用方（GameManager）负责。
+   */
+  adApplyTierUnlock(tier: number): boolean {
+    if (!(tier >= 1 && tier <= GameConfig.maxTier)) return false;
+    this.adUnlockedTiers[tier] = true;
+    this.toast('已解锁 ' + tier + ' 档（看视频奖励）', 2.4);      // H5 index.html:2169
     return true;
   }
 
-  // ---------- 满级变现 ----------
+  // ---------- 变现 ----------
 
-  /** 满级变现单格收益（index.html:788）：30 秒产出 */
+  /** 变现单格收益（index.html:812）：30 秒产出 */
   settleValue(tier: number): number {
     return GameConfig.settleSeconds * GameConfig.coinRate[tier - 1];
   }
 
-  /** 该格是否为可变现的满级单位（index.html:810） */
+  /**
+   * 该格是否为「可长按变现」的单位（H5 index.html:836）。
+   *
+   * ⚠️ 判据是**当前最高档位**，不是固定 24 档。H5 提交 5883fa6 的死锁根因修复：
+   *    原先只有 24 档能变现 → `settles` 无法累积 → 所有档位门槛不可达（玩家永远卡在 6 档）。
+   *    改成「长按当前最高档即可变现」后，1 档开局就能累积 `settles`，门槛自然可达。
+   */
   canSettle(i: number): boolean {
-    return this.inActive(i) && this.cells[i] === GameConfig.maxTier;
+    return this.inActive(i) && this.cells[i] > 0 && this.cells[i] === this.highestTier;
   }
 
-  /** 执行变现：清空该格并加币（index.html:790-808），失败返回 false */
+  /**
+   * 执行变现：清空该格并加币（index.html:816-834），失败返回 false。
+   *
+   * ⚠️ `settles` 的**唯一**自增点就在本函数内（H5 index.html:823），不得在别处再自增。
+   */
   doSettle(i: number): boolean {
     if (!this.canSettle(i)) return false;
 
@@ -603,6 +675,7 @@ export class MergeGrid {
       fragments: this.fragments.slice(),
       codexDone: this.codexDone.slice(),
       recruitCounts: this.recruitCounts.slice(),
+      adUnlockedTiers: { ...this.adUnlockedTiers },
     };
   }
 
@@ -618,6 +691,7 @@ export class MergeGrid {
     this.fragments = d.fragments.slice();
     this.codexDone = d.codexDone.slice();
     this.recruitCounts = d.recruitCounts.slice();
+    this.adUnlockedTiers = { ...(d.adUnlockedTiers || {}) };
     this.selected = -1;
   }
 }
