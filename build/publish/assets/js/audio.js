@@ -4,17 +4,40 @@ window.GinAudio = (function(){
   try { enabled = localStorage.getItem(KEY)!=='0'; } catch(e){}
   const cache={};
   let ctx=null;
+  let probeEl=null;
   // Assume mp3 assets are served. A probe flips this to false when the host
   // cannot deliver our .mp3 files (e.g. a static preview snapshot that 404s
   // audio) so we fall back to procedural WebAudio synthesis instead of silence.
+  //
+  // The probe MUST use a real <audio> element, NOT fetch(). When the player
+  // double-clicks index.html (file:// protocol) fetch/XHR is blocked by CORS,
+  // but media-element loads are not — a fetch probe would wrongly report
+  // "no mp3" and permanently degrade every SFX and character voice to synth.
   let mp3ok = true;
-
-  try {
-    const probe = fetch('assets/audio/sfx_merge.mp3', { method:'GET', headers:{'Range':'bytes=0-0'} });
-    if (probe && probe.then) {
-      probe.then(function(r){ if(!r.ok){ mp3ok=false; } }).catch(function(){ mp3ok=false; });
-    }
-  } catch(e){ mp3ok=false; }
+  (function probeMp3(){
+    try {
+      const a = new Audio('assets/audio/sfx_merge.mp3');
+      a.preload = 'auto';
+      probeEl = a;                       // hold a reference so it isn't GC'd mid-load
+      let settled = false, timer = null;
+      function done(v){
+        if (settled) return;
+        settled = true; mp3ok = v;
+        if (timer) clearTimeout(timer);
+        a.removeEventListener('loadedmetadata', onMeta);
+        a.removeEventListener('canplaythrough', onMeta);
+        a.removeEventListener('error', onErr);
+      }
+      function onMeta(){ done(true); }
+      function onErr(){ done(false); }
+      a.addEventListener('loadedmetadata', onMeta);
+      a.addEventListener('canplaythrough', onMeta);
+      a.addEventListener('error', onErr);
+      // Conservative fallback: no metadata/canplay event within 3s ⇒ unavailable.
+      timer = setTimeout(function(){ done(false); }, 3000);
+      try { a.load(); } catch(e){ done(false); }
+    } catch(e){ mp3ok = false; }
+  })();
 
   function ac(){
     try{
