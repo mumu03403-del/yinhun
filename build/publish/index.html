@@ -117,12 +117,15 @@
   var SAVE_KEY = 'merge_samurai_save_v1';
 
   // 12 档解锁门槛（通用映射，仅动作门槛，合并永远免费）：
+  // 门槛必须严格递增：改前 13/16/19/22/24 的值 (5/8/12/18/25) 低于 12 档的 40，
+  // 导致 settles 一旦达到 40，13/16/19/22/24 全部被顺带放行（5 条门槛变死代码）。
   var GATE = {
     7: { settle: 3 }, 8: { settle: 10, codex: 6 }, 11: { settle: 20 }, 12: { settle: 40, codex: 10 },
-    13: { settle: 5 }, 16: { settle: 8 }, 19: { settle: 12 }, 22: { settle: 18 }, 24: { settle: 25 }
+    13: { settle: 45 }, 16: { settle: 60 }, 19: { settle: 80 }, 22: { settle: 105 }, 24: { settle: 140 }
   };
   var GATE_TIERS = { 7: true, 8: true, 11: true, 12: true, 13: true, 16: true, 19: true, 22: true, 24: true };
   function tierGateOk(t) {
+    if (state.adUnlockedTiers && state.adUnlockedTiers[t]) return true;   // 已看广告解锁 → 直接放行
     var g = GATE[t];
     if (!g) return true;
     if (g.settle && state.settles < g.settle) return false;
@@ -498,7 +501,8 @@
     highestTier: 1,
     merges: 0,
     spawns: 0,
-    settles: 0
+    settles: 0,
+    adUnlockedTiers: {}          // 看激励视频广告解锁的档位（key = 档位数字字符串）
   };
 
   var fragments = new Array(MAX_TIER + 1).fill(0);
@@ -561,6 +565,7 @@
         fragments: fragments.slice(),
         codexDone: codexDone.slice(),
         recruitCounts: recruitCounts.slice(),
+        adUnlockedTiers: state.adUnlockedTiers,
         time: Date.now()
       }));
       return true;
@@ -604,6 +609,16 @@
       for (var ri = 1; ri <= MAX_TIER; ri++) recruitCounts[ri] = Math.max(0, Number(d.recruitCounts[ri]) || 0);
     }
 
+    // 广告解锁档位：只吸收合法键，杜绝脏数据污染门槛判定
+    state.adUnlockedTiers = {};
+    if (d.adUnlockedTiers && typeof d.adUnlockedTiers === 'object') {
+      for (var adk in d.adUnlockedTiers) {
+        if (!d.adUnlockedTiers.hasOwnProperty(adk)) continue;
+        var adt = Math.floor(Number(adk));
+        if (adt >= 1 && adt <= MAX_TIER && d.adUnlockedTiers[adk]) state.adUnlockedTiers[adt] = true;
+      }
+    }
+
     var elapsed = Math.max(0, (Date.now() - (Number(d.time) || Date.now())) / 1000);
     if (elapsed > 60) {
       var rate = coinsPerSecond();
@@ -640,8 +655,8 @@
     for (var i = 0; i < activeCells(); i++) if (state.cells[i] === 0) empties.push(i);
     if (empties.length === 0) {
       toast = {
-        text: hasMaxTierUnit()
-          ? '格子已满：长按满级单位变现可腾出空位'
+        text: hasSettleableUnit()
+          ? '格子已满：长按最高档单位变现可腾出空位'
           : '格子已满，先合并腾出空位',
         t: 2.0
       };
@@ -656,7 +671,10 @@
 
   // 高级招募定价：一级 1000，每差一级 ×5 系数；同档重复招募每次翻倍，封顶 5 倍。
   function recruitCost(tier) {
-    var base = 1000 * Math.pow(5, tier - 1);            // 一级1000，每差一级5倍
+    var base;
+    if (tier >= 24) base = 11920928955078125000;        // = 1000 * 5^23 的字面量：Math.pow 在 tier24 有双精度误差
+    else if (tier >= 23) base = 2384185791015625000;    // = 1000 * 5^22 的字面量
+    else base = 1000 * Math.pow(5, tier - 1);           // 一级1000，每差一级5倍
     var mult = Math.min(Math.pow(2, recruitCounts[tier]), 5); // 同档每次翻倍，封顶5倍
     return Math.round(base * mult);
   }
@@ -742,7 +760,8 @@
     }
     var targetTier = tt + 1;
     if (!tierGateOk(targetTier)) {
-      toast = { text: gateGoalText(targetTier), t: 2.4 };
+      // 门槛未达 → 弹「看视频立即解锁」确认框（原 toast 会被全屏层盖死，玩家看不到）
+      openAdModal('tier', targetTier, 0);
       return false;
     }
     state.cells[to] = tt + 1;
@@ -787,9 +806,11 @@
 
   function settleValue(tier) { return SETTLE_SECONDS * COIN_RATE[tier - 1]; }
 
+  // 逐级变现：长按「当前最高档位」即可变现（而非只有 MAX_TIER），
+  // 使 settles 在 1 档开局就能正常累积 → 门槛自然可达，闭环死锁消失。
   function doSettle(i) {
     var tier = state.cells[i];
-    if (tier !== MAX_TIER) return false;
+    if (tier <= 0 || tier !== state.highestTier) return false;
     var gain = settleValue(tier);
 
     state.cells[i] = 0;
@@ -802,12 +823,12 @@
     floats.push({ x: cx, y: cy, t: 0, dur: 1.2, text: '+' + fmt(gain) + ' 变现' });
     toast = { text: tier + ' 档变现 +' + fmt(gain) + ' 金币（' + SETTLE_SECONDS + ' 秒产出）', t: 2.2 };
     bgPulse = 0.3;
-    playVoice(MAX_TIER);
+    playVoice(tier);
     playSfx('sfx_settle');
     return true;
   }
 
-  function canSettle(i) { return i >= 0 && state.cells[i] === MAX_TIER; }
+  function canSettle(i) { return i >= 0 && state.cells[i] > 0 && state.cells[i] === state.highestTier; }
 
   // ---------- 五子棋小游戏逻辑 ----------
   function gomokuWin(b, who) {
@@ -1159,26 +1180,26 @@
   }
   function gateGoalText(tier) {
     if (tier === 7) return '把满级单位长按变现满 3 次，解锁 7 档（初露锋芒）';
-    if (tier === 8) return '满级变现满 10 次 且 集齐图鉴 6/6，解锁 8 档（登峰造极）';
+    if (tier === 8) return '满级变现满 10 次 且 集齐图鉴 6/24，解锁 8 档（登峰造极）';
     if (tier === 11) return '满级变现满 20 次，解锁 11 档';
-    if (tier === 12) return '满级变现满 40 次 且 集齐图鉴 10/10，解锁 12 档';
-    if (tier === 13) return '累计变现满 5 次，解锁 13 档';
-    if (tier === 16) return '累计变现满 8 次，解锁 16 档';
-    if (tier === 19) return '累计变现满 12 次，解锁 19 档';
-    if (tier === 22) return '累计变现满 18 次，解锁 22 档';
-    if (tier === 24) return '累计变现满 25 次，解锁 24 档（终焉）';
+    if (tier === 12) return '满级变现满 40 次 且 集齐图鉴 10/24，解锁 12 档';
+    if (tier === 13) return '累计变现满 45 次，解锁 13 档';
+    if (tier === 16) return '累计变现满 60 次，解锁 16 档';
+    if (tier === 19) return '累计变现满 80 次，解锁 19 档';
+    if (tier === 22) return '累计变现满 105 次，解锁 22 档';
+    if (tier === 24) return '累计变现满 140 次，解锁 24 档（终焉）';
     return '';
   }
   function gateShort(tier) {
     if (tier === 7) return '变现3次';
-    if (tier === 8) return '变现10·图6/6';
+    if (tier === 8) return '变现10·图6/24';
     if (tier === 11) return '变现20次';
-    if (tier === 12) return '变现40·图10/10';
-    if (tier === 13) return '变现5次';
-    if (tier === 16) return '变现8次';
-    if (tier === 19) return '变现12次';
-    if (tier === 22) return '变现18次';
-    if (tier === 24) return '变现25次';
+    if (tier === 12) return '变现40·图10/24';
+    if (tier === 13) return '变现45次';
+    if (tier === 16) return '变现60次';
+    if (tier === 19) return '变现80次';
+    if (tier === 22) return '变现105次';
+    if (tier === 24) return '变现140次';
     return '';
   }
 
@@ -1275,6 +1296,8 @@
     pointer.settled = false;
     pointer.cell = -1;
     pointer.scrollLastY = p.y;   // 滚动基准（图鉴/招募弹层），缺此值首个 pointermove 会算出 NaN 并永久污染 scrollY
+    pointer.scrollMoved = false; // 逐手势复位：之前是跨手势残留，会导致下一次单纯点按被判成拖动
+    pointer.codexDown = null;    // 图鉴按下落点，留给 pointerup 做「点按 / 拖动」判定
 
     // 新手引导：首次点击任意处关闭并标记为已读（B2）
     if (showTut) {
@@ -1284,7 +1307,18 @@
       return;
     }
 
-    if (modal) { if (window.GinAudio) GinAudio.click(); modal = null; return; }
+    if (modal) {
+      if (modal.kind === 'ad') {
+        var adR = adModalRects();
+        if (hitRect(p, adR.yes)) { if (window.GinAudio) GinAudio.click(); adConfirmYes(); return; }
+        if (window.GinAudio) GinAudio.click();
+        adConfirmCancel();                 // 【放弃】或点击空白 = 取消
+        return;
+      }
+      if (window.GinAudio) GinAudio.click();
+      modal = null;
+      return;
+    }
 
     if (gomokuOpen) {
       if (gomokuScreen === 'menu') { handleGomokuMenuInput(p); return; }
@@ -1329,16 +1363,20 @@
 
       if (hitRect(p, COLL_BTN)) { if (window.GinAudio) GinAudio.click(); collectionOpen = false; return; }
       if (hitRect(p, CODEX_CLOSE_BTN)) { if (window.GinAudio) GinAudio.click(); collectionOpen = false; return; }
-      var hitCard = false;
+
+      // 关键：按下时**不**开详情、**不**关面板；只登记落点。
+      // 否则按下即 detailOpen=true，pointermove 的滚动分支（!detailOpen）永远进不去 → 列表无法滚动。
+      var downTier = null, downHit = false;
       for (var ci = 0; ci < codexRects.length; ci++) {
         if (hitRect(p, codexRects[ci].rect)) {
-          var ct = codexRects[ci].tier;
-          if (codexCardUnlocked(ct)) { detailTier = ct; detailOpen = true; }
-          hitCard = true;
+          downTier = codexRects[ci].tier;
+          downHit = true;
           break;
         }
       }
-      if (!hitCard) collectionOpen = false;
+      var unlockedTier = 0;
+      if (downHit && downTier !== null && codexCardUnlocked(downTier)) unlockedTier = downTier;
+      pointer.codexDown = { tier: unlockedTier, hitCard: downHit };
       return;
     }
 
@@ -1406,7 +1444,7 @@
       pointer.moved = true;
       cancelPress();
     }
-    if (collectionOpen && !detailOpen) {
+    if (collectionOpen && !detailOpen && !modal) {
       var sdy = p.y - pointer.scrollLastY;
       if (Math.abs(p.y - pointer.startY) > 8) {
         pointer.scrollMoved = true;
@@ -1443,7 +1481,27 @@
     }
     cancelPress();
 
-    if (collectionOpen || modal) { drag = null; return; }
+    if (collectionOpen || modal) {
+      // 图鉴列表：抬手才判定。位移 <= 10px 记为「点按」→ 开详情 / 点空白关面板；
+      // 拖动过（scrollMoved）则什么都不做，只保留滚动结果。
+      if (collectionOpen && !detailOpen && !modal && pointer.codexDown) {
+        var cdx = p.x - pointer.startX, cdy = p.y - pointer.startY;
+        var isTap = !pointer.scrollMoved && (cdx * cdx + cdy * cdy) <= 100;
+        if (isTap) {
+          if (pointer.codexDown.tier > 0) {
+            detailTier = pointer.codexDown.tier;
+            detailOpen = true;
+            if (window.GinAudio) GinAudio.click();
+          } else if (!pointer.codexDown.hitCard) {
+            if (window.GinAudio) GinAudio.click();
+            collectionOpen = false;        // 保留「点空白关闭面板」行为
+          }
+        }
+      }
+      pointer.codexDown = null;
+      drag = null;
+      return;
+    }
 
     if (pointer.moved && drag) {
       var target = hitCell(p);
@@ -1555,13 +1613,25 @@
     return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
   }
 
+  // 单位表在 Qi(1e18) 之上补 Si(1e21) / Sp(1e24) / Oc(1e27)，并对 NaN/Infinity 兜底。
+  var FMT_UNITS = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Si', 'Sp', 'Oc'];
   function fmt(n) {
+    n = Number(n);
+    if (!isFinite(n)) return '0';                 // 杜绝 "NaN" / "InfinityQi"
     n = Math.floor(n);
+    if (n < 0) n = 0;
     if (n < 1000) return String(n);
-    var units = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi'];
-    var u = 0;
-    while (n >= 1000 && u < units.length - 1) { n /= 1000; u++; }
-    return n.toFixed(n < 10 ? 2 : (n < 100 ? 1 : 0)) + units[u];
+    var v = n, u = 0;
+    while (v >= 1000 && u < FMT_UNITS.length - 1) { v /= 1000; u++; }
+    var dec = v < 10 ? 2 : (v < 100 ? 1 : 0);
+    var rounded = Number(v.toFixed(dec));
+    // 进位不换单位修复：四舍五入后若已达 1000，继续升一档（999500 必须显示 1.00M，而不是 1000K）
+    while (rounded >= 1000 && u < FMT_UNITS.length - 1) {
+      v /= 1000; u++;
+      dec = v < 10 ? 2 : (v < 100 ? 1 : 0);
+      rounded = Number(v.toFixed(dec));
+    }
+    return rounded.toFixed(dec) + FMT_UNITS[u];
   }
 
   function fmtTime(sec) {
@@ -1901,7 +1971,9 @@
   }
 
   function drawPressRing() {
-    if (press.i < 0 || state.cells[press.i] !== MAX_TIER) return;
+    if (press.i < 0) return;
+    var pressTier = state.cells[press.i];
+    if (pressTier <= 0 || pressTier !== state.highestTier) return;   // 同 canSettle：当前最高档才可长按变现
     var p = Math.max(0, Math.min(1, press.t / LONG_PRESS_MS));
     var r = Math.floor(press.i / GRID_COLS), c = press.i % GRID_COLS;
     var cx = cellCenterX(c), cy = cellCenterY(r);
@@ -1926,8 +1998,11 @@
     ctx.restore();
   }
 
-  function hasMaxTierUnit() {
-    for (var i = 0; i < activeCells(); i++) if (state.cells[i] === MAX_TIER) return true;
+  // 是否存在「可长按变现」的单位（= 当前最高档位）
+  function hasSettleableUnit() {
+    for (var i = 0; i < activeCells(); i++) {
+      if (state.cells[i] > 0 && state.cells[i] === state.highestTier) return true;
+    }
     return false;
   }
 
@@ -1937,7 +2012,9 @@
     var hy = TIP_Y;
     var tipX = (PX0 + PX1) / 2;
     if (press.i >= 0) {
-      text('长按中… 变现可得 +' + fmt(settleValue(MAX_TIER)) + ' 金币', tipX, hy, 12, '#ffe58a', 'center', '700');
+      var pressTierVal = state.cells[press.i];
+      if (pressTierVal <= 0) pressTierVal = state.highestTier;
+      text('长按中… 变现可得 +' + fmt(settleValue(pressTierVal)) + ' 金币', tipX, hy, 12, '#ffe58a', 'center', '700');
     } else {
       var cheapest = recruitCost(1);
       text('点此选择档位招募（一级 ' + fmt(cheapest) + ' 金币起）', tipX, hy, 12,
@@ -1970,6 +2047,19 @@
     }
   }
 
+  // 实际解锁一行（不含扣费）—— 付费路径与「看视频解锁」路径共用，避免逻辑分叉
+  function unlockRowNow() {
+    if (GRID_ROWS >= MAX_ROWS) return false;
+    var newRow = GRID_ROWS;   // 即将解锁的行（0 基）
+    GRID_ROWS++;
+    recomputeLayout();
+    unlockFx = { t: 0, dur: 0.45, row: newRow };   // 锁抖动→碎裂、行依次亮起
+    if (window.GinAudio) GinAudio.unlock();
+    save();
+    toast = { text: '已解锁第 ' + GRID_ROWS + ' 行！', t: 2.0 };
+    return true;
+  }
+
   function tryUnlockRow() {
     if (GRID_ROWS >= MAX_ROWS) return;
     var price = ROW_UNLOCK_PRICES[GRID_ROWS + 1];
@@ -1977,18 +2067,199 @@
     if (state.coins < price) {
       if (window.GinAudio) GinAudio.locked();   // 低沉错误音
       unlockBtnShake = 0.4;                       // 按钮抖动反馈
-      toast = { text: '金币不足，解锁第' + (GRID_ROWS + 1) + '行需 ' + fmt(price) + ' 金币', t: 2.0 };
+      openAdModal('row', 0, GRID_ROWS + 1);       // 金币不足 → 「看视频免费解锁第 N 行？」
       return;
     }
-    var newRow = GRID_ROWS;   // 即将解锁的行（0 基）
     state.coins -= price;
-    GRID_ROWS++;
-    recomputeLayout();
-    unlockFx = { t: 0, dur: 0.45, row: newRow };   // 锁抖动→碎裂、行依次亮起
-    if (window.GinAudio) GinAudio.unlock();
-    save();
-    toast = { text: '已解锁第 ' + GRID_ROWS + ' 行！', t: 2.0 };
+    unlockRowNow();
   }
+
+  /* =========================================================================
+   * 激励视频广告解锁模块（微信小游戏 wx.createRewardedVideoAd）
+   * 设计要点：
+   *  - 环境判定：wx.createRewardedVideoAd 存在 → 小游戏；否则 web。
+   *  - 奖励唯一条件：onClose 且 res.isEnded === true（完整播放）。
+   *  - 绝不允许卡死玩家：onError 自动 load() 重试一次；仍失败 / web 环境 /
+   *    广告位未配置 → 一律直接按成功处理并提示「当前环境无广告，已直接解锁」。
+   *  - 每日 3 次，localStorage 记 {date,count}，跨天自动重置。
+   * ========================================================================= */
+  var AD_UNIT_ID = 'adunit-REPLACE_ME';
+  var AD_DAILY_LIMIT = 3;
+  var AD_SAVE_KEY = 'merge_samurai_ad_v1';
+  var adVideoAd = null;         // 惰性创建的激励视频实例
+
+  function adEnv() {
+    return (typeof wx !== 'undefined' && typeof wx.createRewardedVideoAd === 'function') ? 'wx' : 'web';
+  }
+  function adConfigured() {
+    return typeof AD_UNIT_ID === 'string' && AD_UNIT_ID.length > 0 && AD_UNIT_ID.indexOf('REPLACE_ME') < 0;
+  }
+  function adTodayStr() {
+    var d = new Date();
+    return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+  }
+  function adDaily() {
+    var o = null;
+    try { o = JSON.parse(localStorage.getItem(AD_SAVE_KEY)); } catch (e) { o = null; }
+    if (!o || typeof o !== 'object' || o.date !== adTodayStr() ||
+        typeof o.count !== 'number' || !isFinite(o.count) || o.count < 0) {
+      o = { date: adTodayStr(), count: 0 };
+    }
+    return o;
+  }
+  function adSaveDaily(o) { try { localStorage.setItem(AD_SAVE_KEY, JSON.stringify(o)); } catch (e) {} }
+  function adRemainingToday() { return Math.max(0, AD_DAILY_LIMIT - adDaily().count); }
+  function adConsumeDaily() {
+    var o = adDaily();
+    if (o.count >= AD_DAILY_LIMIT) { adSaveDaily(o); return false; }
+    o.count++;
+    adSaveDaily(o);
+    return true;
+  }
+
+  function adApplyTierUnlock(tier) {
+    state.adUnlockedTiers[tier] = true;
+    save();
+    if (window.GinAudio) GinAudio.unlock();
+    toast = { text: '已解锁 ' + tier + ' 档（看视频奖励）', t: 2.4 };
+    return true;
+  }
+  function adApplyRowUnlock(row) {
+    if (GRID_ROWS >= MAX_ROWS) { toast = { text: '已解锁满行', t: 1.6 }; return false; }
+    unlockRowNow();
+    toast = { text: '看视频解锁第 ' + GRID_ROWS + ' 行！', t: 2.4 };
+    return true;
+  }
+
+  // 播放激励视频；成功（含兜底）后回调 onSuccess。返回是否走到了「可兑现」的分支。
+  function adShow(onSuccess) {
+    function done() { if (typeof onSuccess === 'function') onSuccess(); }
+    if (adEnv() !== 'wx' || !adConfigured()) {
+      toast = { text: '当前环境无广告，已直接解锁', t: 2.2 };
+      done();
+      return true;
+    }
+    if (adRemainingToday() <= 0) {
+      toast = { text: '今日解锁次数已用完', t: 2.2 };
+      return false;
+    }
+    if (!adVideoAd) {
+      try { adVideoAd = wx.createRewardedVideoAd({ adUnitId: AD_UNIT_ID }); } catch (e) { adVideoAd = null; }
+    }
+    if (!adVideoAd || typeof adVideoAd.show !== 'function') {
+      toast = { text: '当前环境无广告，已直接解锁', t: 2.2 };
+      done();
+      return true;
+    }
+    var finished = false, retried = false;
+    function cleanup() {
+      try { if (adVideoAd.offClose) adVideoAd.offClose(onClose); } catch (e) {}
+      try { if (adVideoAd.offError) adVideoAd.offError(onError); } catch (e) {}
+    }
+    function fallback() {
+      if (finished) return;
+      finished = true; cleanup();
+      toast = { text: '当前环境无广告，已直接解锁', t: 2.2 };
+      done();
+    }
+    function onClose(res) {
+      if (finished) return;
+      finished = true; cleanup();
+      if (res && res.isEnded === true) { adConsumeDaily(); done(); }
+      else { toast = { text: '需要看完视频才能解锁', t: 2.2 }; }
+    }
+    function onError() {
+      if (finished) return;
+      cleanup();
+      if (retried) { fallback(); return; }
+      retried = true;                                  // 自动重试一次
+      try {
+        adVideoAd.load().then(function () {
+          if (finished) return;
+          adVideoAd.onClose(onClose);
+          adVideoAd.onError(onError);
+          adVideoAd.show().catch(function () { fallback(); });
+        }).catch(function () { fallback(); });
+      } catch (e) { fallback(); }
+    }
+    try {
+      adVideoAd.onClose(onClose);
+      adVideoAd.onError(onError);
+      adVideoAd.show().catch(function () {
+        if (finished) return;
+        try {
+          adVideoAd.load().then(function () {
+            adVideoAd.show().catch(function () { onError(); });
+          }).catch(function () { onError(); });
+        } catch (e) { onError(); }
+      });
+    } catch (e) { onError(); }
+    return true;
+  }
+
+  // ---------- 确认框（复用既有 modal 机制） ----------
+  function adModalRects() {
+    var bw = W - 72, bh = 232, bx = 36, by = H / 2 - bh / 2;
+    var bw2 = (bw - 48 - 12) / 2;
+    var byy = by + bh - 56;
+    return {
+      box: { x: bx, y: by, w: bw, h: bh },
+      yes: { x: bx + 24, y: byy, w: bw2, h: 44 },
+      no: { x: bx + 24 + bw2 + 12, y: byy, w: bw2, h: 44 }
+    };
+  }
+
+  function openAdModal(adKind, tier, row) {
+    modal = {
+      kind: 'ad',
+      adKind: adKind,                 // 'tier' | 'row'
+      tier: tier || 0,
+      row: row || 0,
+      desc: adKind === 'tier'
+        ? gateGoalText(tier)
+        : ('需 ' + fmt(ROW_UNLOCK_PRICES[row] || 0) + ' 金币（当前 ' + fmt(state.coins) + '）')
+    };
+  }
+
+  function drawAdModal() {
+    var R = adModalRects();
+    ctx.fillStyle = 'rgba(0,0,0,0.78)';
+    ctx.fillRect(0, 0, W, H);
+    var title = modal.adKind === 'tier'
+      ? ('看视频立即解锁 ' + modal.tier + ' 档？')
+      : ('看视频免费解锁第 ' + modal.row + ' 行？');
+    popupFrame(R.box.x, R.box.y, R.box.w, R.box.h, title);
+    if (modal.desc) text(modal.desc, W / 2, R.box.y + 78, 13, '#e7ecf5', 'center', '600');
+    text('（今日剩余 ' + adRemainingToday() + ' 次 / 每日 ' + AD_DAILY_LIMIT + ' 次）',
+         W / 2, R.box.y + 108, 12, '#9a9ab0', 'center', '500');
+    drawButton(R.yes, '看视频解锁', '#2ecc71', true);
+    drawButton(R.no, '放弃', '#5c5c72', false);
+  }
+
+  function adConfirmYes() {
+    if (!modal || modal.kind !== 'ad') { modal = null; return; }
+    var req = { adKind: modal.adKind, tier: modal.tier, row: modal.row };
+    modal = null;
+    adShow(function () {
+      if (req.adKind === 'tier') adApplyTierUnlock(req.tier);
+      else adApplyRowUnlock(req.row);
+    });
+  }
+  function adConfirmCancel() { modal = null; }
+
+  // ---------- 自测钩子 ----------
+  function adState() {
+    var tiers = [];
+    for (var t = 1; t <= MAX_TIER; t++) if (state.adUnlockedTiers[t]) tiers.push(t);
+    return { env: adEnv(), adUnitId: AD_UNIT_ID, remainingToday: adRemainingToday(), unlockedTiers: tiers };
+  }
+  function adGrant(tier) {
+    tier = Math.floor(Number(tier));
+    if (!(tier >= 1 && tier <= MAX_TIER)) return false;
+    if (adEnv() === 'wx' && adConfigured()) adConsumeDaily();   // 真实环境才计次
+    return adApplyTierUnlock(tier);
+  }
+  function setAdUnitId(id) { AD_UNIT_ID = String(id); adVideoAd = null; return AD_UNIT_ID; }
 
   function drawCelebration() {
     var t = celebration.t;
@@ -2104,9 +2375,10 @@
     text(line, PX0 + PW / 2, y, 11, '#9a9ab0', 'center', '500');
   }
 
+  // 与图鉴页同口径（codexCardUnlocked）：门槛未过的档位在 HUD 里也不能算已解锁
   function unlockedCardCount() {
     var n = 0;
-    for (var i = 0; i < MAX_TIER; i++) if (state.highestTier >= i + 1) n++;
+    for (var i = 1; i <= MAX_TIER; i++) if (codexCardUnlocked(i)) n++;
     return n;
   }
 
@@ -2257,7 +2529,13 @@
         text('需要 ' + tierN + ' 档', x + 12, y + cardH - 32, 11, '#5c5c72', 'left', '600');
       }
 
-      codexRects.push({ rect: { x: x, y: y, w: cardW, h: cardH }, tier: tierN });
+      // 命中矩形必须与绘制裁剪区（y ∈ [startY, startY + (H-175)]）求交：
+      // 只登记可见卡片，并把矩形夹进可视区 → 点纯黑空白不再命中卡片
+      var visTop = startY, visBot = startY + (H - 175);
+      if (y + cardH > visTop && y < visBot) {
+        var cy0 = Math.max(y, visTop), cy1 = Math.min(y + cardH, visBot);
+        codexRects.push({ rect: { x: x, y: cy0, w: cardW, h: cy1 - cy0 }, tier: tierN });
+      }
     }
 
     ctx.restore();
@@ -2418,7 +2696,6 @@
 
     drawParticles();
     drawFloats(dt);
-    drawToast();
 
     if (celebration) drawCelebration();
     if (collectionOpen) drawCollection();
@@ -2426,12 +2703,15 @@
     if (friendOpen) drawFriendOverlay();
     if (detailOpen) drawDetail();
     if (recruitOpen) drawRecruitOverlay();
-    if (modal) drawModal();
+    if (modal) { if (modal.kind === 'ad') drawAdModal(); else drawModal(); }
     if (gomokuOpen) {
       if (gomokuScreen === 'menu') drawGomokuMenu(); else drawGomoku();
     }
     if (brawlerOpen) drawBrawler();
     if (showTut) drawTutorial();
+
+    // 必须最后画：位于所有全屏层之上，否则招募缺钱 / 门槛 / 五子棋奖励等提示会被完全遮死
+    drawToast();
   }
 
   function drawTutorial() {
@@ -2594,6 +2874,21 @@
     playVoice: playVoice,
     boardImgLoaded: function (t) { return !!boardImg[t]; },
     codexImgLoaded: function (t) { return !!codexImg[t]; },
+    fmt: fmt,
+    isRecruitOpen: function () { return recruitOpen; },
+    isDetailOpen: function () { return detailOpen; },
+    detailTierNow: function () { return detailTier; },
+    collectionScroll: function () { return { y: collectionScrollY, max: collectionMaxScroll }; },
+    modalInfo: function () {
+      return modal
+        ? { open: true, kind: modal.kind || 'offline', adKind: modal.adKind || null,
+            tier: modal.tier || 0, row: modal.row || 0 }
+        : { open: false };
+    },
+    adState: adState,
+    adGrant: adGrant,
+    setAdUnitId: setAdUnitId,
+    adModalRects: adModalRects,
     gomoku: {
       N: GOMOKU_N,
       isOpen: function () { return gomokuOpen; },
