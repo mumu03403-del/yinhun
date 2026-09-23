@@ -116,12 +116,12 @@
   var OFFLINE_EFFICIENCY = 0.5;
   var SAVE_KEY = 'merge_samurai_save_v1';
 
-  // 12 档解锁门槛（通用映射，仅动作门槛，合并永远免费）：
-  // 门槛必须严格递增：改前 13/16/19/22/24 的值 (5/8/12/18/25) 低于 12 档的 40，
-  // 导致 settles 一旦达到 40，13/16/19/22/24 全部被顺带放行（5 条门槛变死代码）。
+  // 解锁门槛（通用映射，仅动作门槛，合并永远免费）：
+  // 门槛必须严格递增。变现会销毁该单位，所以门槛次数 == 需要重建的最高档单位个数：
+  // 45/60/80/105/140 会让后期完全不可达，故回调到合理量级（7/8/11/12 的 settle 与 codex 条件不变）。
   var GATE = {
-    7: { settle: 3 }, 8: { settle: 10, codex: 6 }, 11: { settle: 20 }, 12: { settle: 40, codex: 10 },
-    13: { settle: 45 }, 16: { settle: 60 }, 19: { settle: 80 }, 22: { settle: 105 }, 24: { settle: 140 }
+    7: { settle: 3 }, 8: { settle: 4, codex: 6 }, 11: { settle: 6 }, 12: { settle: 8, codex: 10 },
+    13: { settle: 10 }, 16: { settle: 13 }, 19: { settle: 16 }, 22: { settle: 20 }, 24: { settle: 25 }
   };
   var GATE_TIERS = { 7: true, 8: true, 11: true, 12: true, 13: true, 16: true, 19: true, 22: true, 24: true };
   function tierGateOk(t) {
@@ -237,8 +237,11 @@
 
   var LEGEND_CLOSE_BTN = { x: W / 2 - 80, y: 300, w: 160, h: 44 };
   var FRIEND_CLOSE_BTN = { x: W / 2 - 80, y: 290, w: 160, h: 44 };
-  var DETAIL_VOICE_BTN = { x: W / 2 - 70, y: H - 132, w: 140, h: 46 };
-  var DETAIL_CLOSE_BTN = { x: W / 2 - 80, y: H - 72, w: 160, h: 46 };
+  // 详情页改成「左立绘 + 右信息列」：立绘面板 x<=456（整张全身 contain 显示），
+  // 文字与两个按钮全部落在右列 x 484..788，既压不到立绘，彼此也不重叠。
+  var DETAIL_PANEL = { x: 24, y: 56, w: 432, h: 294 };
+  var DETAIL_VOICE_BTN = { x: 484, y: 240, w: 146, h: 48 };
+  var DETAIL_CLOSE_BTN = { x: 642, y: 240, w: 146, h: 48 };
   var LEGEND_ROW = 22;
 
   // ---------- 五子棋小游戏（角色扮演：你=银 / 敌=鬼） ----------
@@ -283,10 +286,12 @@
   // 弹层内按钮（菜单页，两列布局）
   var GOMOKU_MENU_MODE_PVE = { x: 24, y: 64, w: 170, h: 44 };
   var GOMOKU_MENU_MODE_PVP = { x: 218, y: 64, w: 170, h: 44 };
+  // 「▶ 换角色」原先位于 x380..428，正好落在角色名（居中于 W/2=406）下方并被后绘制的名字整块盖住
+  // （点得到但看不见）；移到屏幕最右，与最左的「◀」对称，中间留给角色名 → 两者互不遮挡。
   var GOMOKU_MENU_CHAR_PREV = { x: 40, y: 132, w: 48, h: 44 };
-  var GOMOKU_MENU_CHAR_NEXT = { x: 380, y: 132, w: 48, h: 44 };
+  var GOMOKU_MENU_CHAR_NEXT = { x: W - 88, y: 132, w: 48, h: 44 };
   var GOMOKU_MENU_CHAR2_PREV = { x: 40, y: 188, w: 48, h: 44 };
-  var GOMOKU_MENU_CHAR2_NEXT = { x: 380, y: 188, w: 48, h: 44 };
+  var GOMOKU_MENU_CHAR2_NEXT = { x: W - 88, y: 188, w: 48, h: 44 };
   var GOMOKU_MENU_BG = [
     { x: 24, y: 240, w: 250, h: 40 },
     { x: 281, y: 240, w: 250, h: 40 },
@@ -516,6 +521,13 @@
   var drag = null;
   var floats = [];
   var toast = null;
+  // Toast 上帧的实测几何（供 __game.toastMetrics() 自测用）。
+  // 必须在顶层显式声明：本文件第 49 行是 "use strict"，在 drawToast 里直接赋值未声明标识符会抛
+  // ReferenceError；而 drawToast 在 render() 之内、render() 在 loop() 之内，
+  // 异常会把循环末尾的 requestAnimationFrame(loop) 一起跳过 —— 循环当场死亡、画面永久静止。
+  var lastToastMetrics = null;
+  var loopErrors = 0;              // 单帧渲染异常计数（必须是 0；>0 说明有帧在抛，见 loop()）
+  var loopLastError = null;
   var modal = null;
   var collectionOpen = false;
   var recruitOpen = false;          // 高级招募弹层
@@ -1143,18 +1155,21 @@
     var useWx = (typeof wx !== 'undefined');
     for (var t = 1; t <= MAX_TIER; t++) {
       (function (tier, meta) {
+        if (!meta.board) { boardImg[tier] = null; return; }   // 13-24 档无棋盘资源 → 不请求 assets/board/null
         var im = new Image();
         im.onload = function () { boardImg[tier] = im; loadedBoard++; };
         im.onerror = function () { boardImg[tier] = null; };
         im.src = ASSET_BASE + 'assets/board/' + meta.board;
       })(t, TIER_META[t - 1]);
       (function (tier, meta) {
+        if (!meta.codex) { codexImg[tier] = null; return; }   // 同理：缺 codex 时也不发请求
         var im = new Image();
         im.onload = function () { codexImg[tier] = im; loadedCodex++; };
         im.onerror = function () { codexImg[tier] = null; };
         im.src = ASSET_BASE + 'assets/codex/' + meta.codex;
       })(t, TIER_META[t - 1]);
       (function (tier, meta) {
+        if (!meta.audio) { voiceAud[tier] = null; return; }   // 13-24 档无语音 → 不请求，也不计入 loadedAudio
         try {
           if (useWx) {
             var w = wx.createInnerAudioContext();
@@ -1165,7 +1180,7 @@
             aud.preload = 'auto';
             voiceAud[tier] = aud;
           }
-          loadedAudio++;
+          loadedAudio++;                                      // 仅真实创建成功才计数（与 loadedBoard/loadedCodex 同口径）
         } catch (e) { voiceAud[tier] = null; }
       })(t, TIER_META[t - 1]);
     }
@@ -1178,28 +1193,29 @@
     if (GATE_TIERS[tier]) return state.highestTier >= tier && tierGateOk(tier);
     return state.highestTier >= tier;
   }
+  // 文案数字必须与上面 GATE 的 settle/codex 一一对应（分母 24 是图鉴总数，勿改）
   function gateGoalText(tier) {
     if (tier === 7) return '把满级单位长按变现满 3 次，解锁 7 档（初露锋芒）';
-    if (tier === 8) return '满级变现满 10 次 且 集齐图鉴 6/24，解锁 8 档（登峰造极）';
-    if (tier === 11) return '满级变现满 20 次，解锁 11 档';
-    if (tier === 12) return '满级变现满 40 次 且 集齐图鉴 10/24，解锁 12 档';
-    if (tier === 13) return '累计变现满 45 次，解锁 13 档';
-    if (tier === 16) return '累计变现满 60 次，解锁 16 档';
-    if (tier === 19) return '累计变现满 80 次，解锁 19 档';
-    if (tier === 22) return '累计变现满 105 次，解锁 22 档';
-    if (tier === 24) return '累计变现满 140 次，解锁 24 档（终焉）';
+    if (tier === 8) return '满级变现满 4 次 且 集齐图鉴 6/24，解锁 8 档（登峰造极）';
+    if (tier === 11) return '满级变现满 6 次，解锁 11 档';
+    if (tier === 12) return '满级变现满 8 次 且 集齐图鉴 10/24，解锁 12 档';
+    if (tier === 13) return '累计变现满 10 次，解锁 13 档';
+    if (tier === 16) return '累计变现满 13 次，解锁 16 档';
+    if (tier === 19) return '累计变现满 16 次，解锁 19 档';
+    if (tier === 22) return '累计变现满 20 次，解锁 22 档';
+    if (tier === 24) return '累计变现满 25 次，解锁 24 档（终焉）';
     return '';
   }
   function gateShort(tier) {
     if (tier === 7) return '变现3次';
-    if (tier === 8) return '变现10·图6/24';
-    if (tier === 11) return '变现20次';
-    if (tier === 12) return '变现40·图10/24';
-    if (tier === 13) return '变现45次';
-    if (tier === 16) return '变现60次';
-    if (tier === 19) return '变现80次';
-    if (tier === 22) return '变现105次';
-    if (tier === 24) return '变现140次';
+    if (tier === 8) return '变现4·图6/24';
+    if (tier === 11) return '变现6次';
+    if (tier === 12) return '变现8·图10/24';
+    if (tier === 13) return '变现10次';
+    if (tier === 16) return '变现13次';
+    if (tier === 19) return '变现16次';
+    if (tier === 22) return '变现20次';
+    if (tier === 24) return '变现25次';
     return '';
   }
 
@@ -1565,6 +1581,18 @@
   function textW(str, size, weight) {
     ctx.font = (weight || '600') + ' ' + size + 'px ' + '-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
     return ctx.measureText(str).width;
+  }
+
+  // 中文/混排按可用宽度硬切行（Toast 自适应用）
+  function wrapText(str, maxW, size, weight) {
+    var out = [], cur = '';
+    for (var i = 0; i < str.length; i++) {
+      var ch = str.charAt(i), t = cur + ch;
+      if (cur.length > 0 && textW(t, size, weight) > maxW) { out.push(cur); cur = ch; }
+      else cur = t;
+    }
+    if (cur.length) out.push(cur);
+    return out;
   }
 
   function shade(hex, k) {
@@ -1953,21 +1981,45 @@
       if (selected === i) { hexPath(hs + 2); ctx.lineWidth = 3; ctx.strokeStyle = '#ffffff'; ctx.stroke(); }
     }
 
-    // 档位数字底座（保证在图案上清晰可读）
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, Math.min(1, alpha)) * 0.85;
-    fillRR(cxm - 16, cym - 10, 32, 20, 6, 'rgba(0,0,0,0.45)');
-    ctx.restore();
-
+    // 档位数字：底衬取「与字色相反」的不透明色（白字→深底、深字→白底），再加同色描边，
+    // 保证叠在立绘 / 渐变 / 深色块上时，24 档在各种底色下的对比度都不低于 4.5:1。
     var fg = contrastText(color);
     var fs = Math.max(11, Math.floor((CELL - 8) * s * 0.40));
-    text(String(tier), cxm, cym + 1, fs, fg, 'center', '800');
+    var plate = (fg === '#ffffff') ? 'rgba(0,0,0,0.72)' : 'rgba(255,255,255,0.86)';
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    fillRR(cxm - fs * 1.05, cym - fs * 0.80, fs * 2.1, fs * 1.60, 7, plate);
+    ctx.font = '800 ' + fs + 'px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(2, fs * 0.2);
+    ctx.strokeStyle = plate;
+    ctx.strokeText(String(tier), cxm, cym + 1);
+    ctx.fillStyle = fg;
+    ctx.fillText(String(tier), cxm, cym + 1);
+    ctx.restore();
     ctx.restore();
 
-    var small = Math.max(9, Math.floor((CELL - 8) * s * 0.19));
+    // 「+X/秒」标签：数字先用 fmt 压缩（24 档原始值是 11 位整数，任何格子都放不下），
+    // 字号按可用格宽自适应收缩，再对格子做硬裁剪 → 任何档位 / 任何行数都绝不越出格子。
+    var lab = boardRateLabel(tier);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x + 1, y + 1, CELL - 2, CELL - 2);
+    ctx.clip();
     ctx.globalAlpha = Math.max(0, Math.min(1, alpha)) * 0.85;
-    text('+' + COIN_RATE[tier - 1], x + CELL - 8, y + CELL - 8, small, fg, 'right', '700');
-    ctx.globalAlpha = 1;
+    text(lab.text, x + CELL - 6, y + CELL - 7, lab.size, fg, 'right', '700');
+    ctx.restore();
+  }
+
+  // 「+X/秒」标签的字符串 + 自适应字号（与 drawUnit 共用，保证「字号随可用格宽收缩」可被自测验证）
+  function boardRateLabel(tier) {
+    var str = '+' + fmt(COIN_RATE[tier - 1]);
+    var avail = CELL - 14;
+    var size = Math.max(9, Math.floor((CELL - 8) * 0.19));
+    while (size > 7 && textW(str, size, '700') > avail) size--;
+    return { text: str, size: size, w: textW(str, size, '700'), avail: avail };
   }
 
   function drawPressRing() {
@@ -2459,6 +2511,17 @@
     ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
   }
 
+  // 「面部/头部优先」裁切：立绘是 1024×1024 的全身竖构图，取图幅上部并对齐顶端（sy=0），
+  // 保证头部完整、五官可辨。原先用 drawCover 做居中裁切，384×96 的卡片只截到纵向 25%（腰腹段），
+  // 整颗头被切掉 —— 这正是图鉴卡「看不到脸」的根因。
+  function drawCoverTop(img, dx, dy, dw, dh) {
+    var ir = img.width / img.height, dr = dw / dh;
+    var sw, sh, sx, sy;
+    if (ir > dr) { sh = img.height; sw = sh * dr; sx = (img.width - sw) / 2; sy = 0; }
+    else { sw = img.width; sh = sw / dr; sx = 0; sy = 0; }
+    ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+  }
+
   function drawCollection() {
     ctx.fillStyle = 'rgba(6,6,12,1)';
     ctx.fillRect(0, 0, W, H);
@@ -2468,7 +2531,7 @@
 
     codexRects = [];
     var cardW = (W - 32 - 12) / 2;
-    var cardH = 96;
+    var cardH = 132;              // 96 → 132：让面部有足够像素可辨；宽度仍按 2 列自适应
     var gap = 12;
     var startY = 70;
     collectionMaxScroll = Math.max(0, (MAX_TIER / 2) * (cardH + gap) - (H - 175));
@@ -2492,7 +2555,7 @@
       ctx.shadowOffsetY = 4;
       if (unlocked && codexImg[tierN]) {
         fillRR(x, y, cardW, cardH, 16, '#1c1c2a');
-        drawCover(codexImg[tierN], x, y, cardW, cardH);
+        drawCoverTop(codexImg[tierN], x, y, cardW, cardH);   // 头部优先，脸不再被裁掉
       } else {
         fillRR(x, y, cardW, cardH, 16, 'rgba(255,255,255,0.06)');
       }
@@ -2500,11 +2563,11 @@
       strokeRR(x, y, cardW, cardH, 16, TIER_COLORS[i], 2.5);
 
       if (unlocked && codexImg[tierN]) {
-        var bg2 = ctx.createLinearGradient(0, y + cardH - 30, 0, y + cardH);
+        var bg2 = ctx.createLinearGradient(0, y + cardH - 56, 0, y + cardH);
         bg2.addColorStop(0, 'rgba(0,0,0,0)');
-        bg2.addColorStop(1, 'rgba(0,0,0,0.62)');
+        bg2.addColorStop(1, 'rgba(0,0,0,0.72)');
         ctx.fillStyle = bg2;
-        ctx.fillRect(x, y + cardH - 30, cardW, 30);
+        ctx.fillRect(x, y + cardH - 56, cardW, 56);
       }
 
       // 醒目角标（左上角圆点 + 档位数字）：高对比 + 金边，明显一点
@@ -2519,14 +2582,17 @@
       text(String(i + 1), bgx + bgr, bgy + bgr + 1, 17, unlocked ? contrastText(TIER_COLORS[i]) : '#6d6d83', 'center', '800');
 
       var name = unlocked ? CHARACTER_NAMES[i] : (isGateTier ? gateGoalText(tierN) : '未解锁');
-      text(name, x + 12, y + cardH - 14, unlocked ? 14 : 10,
+      text(name, x + 12, y + cardH - 16, unlocked ? 15 : 10,
            unlocked ? '#ffffff' : '#d8d8e6', 'left', unlocked ? '800' : '700');
       if (unlocked) {
-        text('▶ 原声', x + cardW - 12, y + cardH - 14, 11, '#9fe0ff', 'right', '700');
-        text('+' + COIN_RATE[i] + '/秒', x + 12, y + cardH - 32, 11, '#8fd8a8', 'left', '600');
-        text('碎片 ' + fragments[tierN] + '/10', x + 12, y + cardH - 48, 10, codexDone[tierN] ? '#e8c15a' : '#cfcfe0', 'left', '600');
+        text('▶ 原声', x + cardW - 12, y + cardH - 16, 11, '#9fe0ff', 'right', '700');
+        text('+' + COIN_RATE[i] + '/秒', x + 12, y + cardH - 38, 12, '#8fd8a8', 'left', '600');
+        // 「碎片 x/10」挪到卡片右下角：左上角是带金环的档位徽章圆（圆心 x+31 / y+31、半径 19），
+        // 原先放在左下 x+12 / y+cardH-48 正好压在徽章上，故改为右下并与之错行。
+        text('碎片 ' + fragments[tierN] + '/10', x + cardW - 12, y + cardH - 38, 10,
+             codexDone[tierN] ? '#e8c15a' : '#cfcfe0', 'right', '600');
       } else if (!isGateTier) {
-        text('需要 ' + tierN + ' 档', x + 12, y + cardH - 32, 11, '#5c5c72', 'left', '600');
+        text('需要 ' + tierN + ' 档', x + 12, y + cardH - 38, 11, '#5c5c72', 'left', '600');
       }
 
       // 命中矩形必须与绘制裁剪区（y ∈ [startY, startY + (H-175)]）求交：
@@ -2612,7 +2678,10 @@
   function drawDetail() {
     ctx.fillStyle = 'rgba(6,6,12,1)';
     ctx.fillRect(0, 0, W, H);
-    var cx = 28, cy = 64, cw = W - 56, ch = 230;
+    text('角色详情', W / 2, 26, 16, '#e8c15a', 'center', '800', SERIF);
+
+    // 左：立绘面板 —— 等比 contain（整张全身完整显示、居中留边，任何一边都不裁切）
+    var cx = DETAIL_PANEL.x, cy = DETAIL_PANEL.y, cw = DETAIL_PANEL.w, ch = DETAIL_PANEL.h;
     fillRR(cx, cy, cw, ch, 18, 'rgba(20,20,34,0.96)');
     strokeRR(cx, cy, cw, ch, 18, '#e8c15a', 3);
     var img = codexImg[detailTier];
@@ -2621,14 +2690,18 @@
       ctx.beginPath(); ctx.rect(cx, cy, cw, ch); ctx.clip();
       var ir = img.width / img.height, dr = cw / ch;
       var dw, dh;
-      if (ir > dr) { dh = ch; dw = ch * ir; } else { dw = cw; dh = cw / ir; }
+      if (ir > dr) { dw = cw; dh = cw / ir; } else { dh = ch; dw = ch * ir; }
       var dx = cx + (cw - dw) / 2, dy = cy + (ch - dh) / 2;
       ctx.drawImage(img, dx, dy, dw, dh);
       ctx.restore();
     }
-    text(CHARACTER_NAMES[detailTier - 1], cx + cw / 2, cy + 30, 22, '#e8c15a', 'center', '800', SERIF);
-    text('第 ' + detailTier + ' 档 · ' + CHARACTER_NAMES[detailTier - 1], cx + cw / 2, cy + 60, 13, '#9a9ab0', 'center', '500');
-    text('+' + COIN_RATE[detailTier - 1] + ' 金币/秒', cx + cw / 2, cy + 84, 16, '#8fd8a8', 'center', '700');
+
+    // 右：信息列（x 484..788），标题 / 档位说明 / 收益 / 两个按钮均不与立绘面板（x<=456）相交
+    var ix = 484;
+    text('第 ' + detailTier + ' 档', ix, 110, 26, '#e8c15a', 'left', '800', SERIF);
+    text(CHARACTER_NAMES[detailTier - 1], ix, 150, 20, '#ffffff', 'left', '800');
+    text('+' + COIN_RATE[detailTier - 1] + ' 金币/秒', ix, 184, 15, '#8fd8a8', 'left', '700');
+    text('长按棋盘上的满级单位可变现为金币', ix, 210, 12, '#9a9ab0', 'left', '500');
     drawButton(DETAIL_VOICE_BTN, '▶ 原声', '#3aa7d8');
     drawButton(DETAIL_CLOSE_BTN, '关闭', '#e8c15a');
   }
@@ -2656,12 +2729,33 @@
   function drawToast() {
     if (!toast) return;
     ctx.globalAlpha = Math.min(1, toast.t * 2);
-    // 居中于棋盘区，避开左上「返回首页」与右侧 HUD
-    var x = 110, w = BOARD_X1 - 110, h = 34, y = 6;
-    if (w > 360) { w = 360; x = 110 + (BOARD_X1 - 110 - 360) / 2; }
-    fillRR(x, y, w, h, 17, 'rgba(20,20,32,0.92)');
-    strokeRR(x, y, w, h, 17, 'rgba(232,193,90,0.4)', 1);
-    text(toast.text, x + w / 2, y + h / 2, 13, '#ffe58a', 'center', '600');
+    // 气泡宽度上限 348，恒落在棋盘区内（避开左上「返回首页」与右侧 HUD）；
+    // 文字按 measureText 自动缩字号 + 换行，保证任何文案都完整落在气泡内（不再左右溢出、也一定有底色）。
+    var maxW = Math.min(360, BOARD_X1 - 110 - 8);
+    var x = 110 + (BOARD_X1 - 110 - maxW) / 2;
+    var innerW = maxW - 24;
+    var size, lines = [];
+    for (size = 13; size >= 10; size--) {
+      lines = wrapText(toast.text, innerW, size, '600');
+      if (lines.length <= 2) break;
+    }
+    if (size < 10) size = 10;
+    if (lines.length > 3) lines = lines.slice(0, 3);
+    var lineH = size + 5;
+    var h = lines.length * lineH + 10;
+    var y = 6;
+    fillRR(x, y, maxW, h, 17, 'rgba(20,20,32,0.92)');
+    strokeRR(x, y, maxW, h, 17, 'rgba(232,193,90,0.4)', 1);
+    for (var li = 0; li < lines.length; li++) {
+      text(lines[li], x + maxW / 2, y + 5 + lineH * li + lineH / 2, size, '#ffe58a', 'center', '600');
+    }
+    var maxLineW = 0;
+    for (var lw = 0; lw < lines.length; lw++) {
+      var w0 = textW(lines[lw], size, '600');
+      if (w0 > maxLineW) maxLineW = w0;
+    }
+    lastToastMetrics = { x: x, y: y, w: maxW, h: h, size: size, lines: lines.length,
+                         maxLineW: maxLineW, innerW: innerW, text: toast.text };
     ctx.globalAlpha = 1;
   }
 
@@ -2778,12 +2872,22 @@
   }
 
   function loop(ts) {
+    // 先排下一帧：任何单帧异常都不再能把循环整条掐死。
+    // 原先 requestAnimationFrame 在末尾，只要 render() 抛一次（例如 2026-09-23 的
+    // lastToastMetrics 未声明），本帧就永远排不出下一帧 → 画面永久静止、玩家看起来「卡死/打不开」。
+    requestAnimationFrame(loop);
     var now = ts / 1000;
     var dt = lastFrame ? Math.min(0.1, now - lastFrame) : 0;
     lastFrame = now;
-    if (!modal) update(dt);
-    render(dt);
-    requestAnimationFrame(loop);
+    try {
+      if (!modal) update(dt);
+      render(dt);
+    } catch (e) {
+      // 不静默吞掉：计数 + 留最后一次原因，供 __game.loopErrors() 自测断言（必须恒为 0）
+      loopErrors++;
+      loopLastError = String((e && e.message) || e);
+      try { console.error('[loop]', loopLastError); } catch (x) {}
+    }
   }
 
   // ---------- 10. 启动 ----------
@@ -2879,6 +2983,26 @@
     isDetailOpen: function () { return detailOpen; },
     detailTierNow: function () { return detailTier; },
     collectionScroll: function () { return { y: collectionScrollY, max: collectionMaxScroll }; },
+    // 自动化验证钩子（图鉴卡几何 / 方块标签几何 / Toast 实测几何 / 实时布局）
+    codexCards: function () {
+      return codexRects.map(function (r) {
+        return { x: r.rect.x, y: r.rect.y, w: r.rect.w, h: r.rect.h, tier: r.tier };
+      });
+    },
+    setCollectionScroll: function (y) {
+      collectionScrollY = Math.max(0, Math.min(collectionMaxScroll, y));
+      return collectionScrollY;
+    },
+    boardLabel: function (tier) {
+      var r = boardRateLabel(tier);
+      return { text: r.text, size: r.size, w: r.w, avail: r.avail, cell: CELL, gap: GAP };
+    },
+    toastMetrics: function () { return lastToastMetrics; },
+    loopErrors: function () { return { count: loopErrors, last: loopLastError }; },
+    liveLayout: function () {
+      return { CELL: CELL, GAP: GAP, GRID_X: GRID_X, GRID_Y: GRID_Y, ROWS: GRID_ROWS, COLS: GRID_COLS };
+    },
+    detailLayout: function () { return { panel: DETAIL_PANEL, voice: DETAIL_VOICE_BTN, close: DETAIL_CLOSE_BTN }; },
     modalInfo: function () {
       return modal
         ? { open: true, kind: modal.kind || 'offline', adKind: modal.adKind || null,
